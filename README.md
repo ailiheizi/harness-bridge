@@ -18,14 +18,34 @@ no Telegram or Koishi dependency.
 > setup and business authorization remain host responsibilities. This is not
 > a production-ready bot platform or a universal Harness runtime.
 
-![Harness Bridge system overview](assets/architecture.svg)
+```text
+                        TG / Web / API / CLI
+                                  ↓
+          Host app: identity, tenant rules, access, storage
+                                  ↓
+              ┌───────────────────┴───────────────────┐
+              ↓                                       ↓
+   Approved code / plugins                     Harness Bridge
+              │                                       ↓
+              │                              OpenShell + Docker
+              │                          Fresh sandbox: DSH + Skill
+              │                                       ↓
+              │                            Run evidence + cleanup
+              │                                       │
+              └───────────────────┬───────────────────┘
+                                  ↓
+              Host reviews result, access and audience
+                                  ↓
+               Reply / API result / approved artifact
+```
 
-Follow a flexible task from a Telegram message or host API to trusted input,
-an isolated DSH run, cleanup evidence and a host-authorized reply. The numbered
-bands are flow stages; Telegram/HTTP entrypoints, storage, business permissions
-and final delivery belong to the host.
+Predictable tasks use existing code; flexible tasks use an isolated Harness.
+The host decides final delivery for both paths. Receivers, storage, business
+authorization and code plugins belong to the host. Sandbox calls must also be
+authorized at the actual CLI / API boundary; the final result review cannot
+replace authorization before a business operation.
 
-[Input/output example](docs/input-output.md) · [Isolation and task sequence](docs/architecture.md) · [Reuse and pool proposal](docs/reuse.md) · [Mermaid source](assets/architecture.mmd)
+[Input/output example](docs/input-output.md) · [Graphical overview, isolation and sequence](docs/architecture.md) · [Reuse and pool proposal](docs/reuse.md)
 
 ## The idea
 
@@ -75,7 +95,10 @@ justify it, unused clean capacity could be leased once, run once, destroyed,
 and replenished. There is no VM backend, warm pool or reset-and-reassign pool
 in the current package. [Current/proposed lifecycle diagram and gates](docs/reuse.md)
 
-![Shared preparation today and proposed single-use clean capacity](assets/capacity-reuse.svg)
+```text
+Today:    shared immutable image/dependency prep → fresh sandbox per task → run → cleanup
+Proposed: prewarm unused capacity → exclusive single use → destroy → replenish (not implemented)
+```
 
 ## Try the source
 
