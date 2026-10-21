@@ -29,3 +29,10 @@ capabilities as integration gaps instead of adding a parallel runtime.
 For changes that affect claims or trust boundaries, update the relevant design
 or ADR documentation and keep the validation record precise about what was
 actually run.
+
+## Architecture diagrams
+
+Edit Mermaid sources under `assets/` and regenerate SVG/PNG exports using the
+[diagram build guide](docs/diagrams.md). Keep each view focused: overview,
+isolation/authority, or task lifecycle. Review the generated images at the size
+where readers will see them. Do not maintain hand-edited copies of exports.

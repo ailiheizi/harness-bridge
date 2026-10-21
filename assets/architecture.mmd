@@ -1,24 +1,30 @@
-flowchart LR
-  subgraph Host[Trusted host application — integrator-owned]
-    Receive[Bot / API / external event]
-    Authority[Authenticated task context\nCurrent permissions]
-    Fast[Approved deterministic code\nExisting storage and plugins]
-    Bridge[Harness Bridge\nAdmission · native identity · execution\nBounded cleanup · result gate]
-    Deliver[Current audience / accounting checks\nPersistence and delivery]
-    Receive --> Authority
-    Authority --> Fast
-    Authority --> Bridge
-    Fast --> Deliver
-    Bridge --> Deliver
+flowchart TB
+  accTitle: Harness Bridge system overview
+  accDescr: A trusted application calls the bridge library in its own process. The bridge uses the OpenShell native CLI to run existing DSH in a fresh Docker sandbox. The host keeps storage and user delivery; the bridge returns execution and cleanup evidence.
+
+  subgraph app["Your application · trusted process"]
+    direction LR
+    Host["Bot / API<br/>Event receiver"]
+    Bridge["Harness Bridge<br/>Task lifecycle"]
+    Host <-->|trusted task / gated result| Bridge
   end
-  subgraph Native[Reused OpenShell — Docker binding]
-    Control[Native CLI / trusted control plane\nLifecycle · policy · provider configuration]
-    subgraph Workload[Fresh untrusted task workload]
-      DSH[Existing DSH headless Harness\nOrdinary Skill + tools + workspace]
-    end
-    Control --> DSH
-    DSH --> Control
+
+  subgraph upstream["Reused OpenShell · Docker only"]
+    direction LR
+    Native["OpenShell<br/>Native control plane"]
+    DSH["Fresh task sandbox<br/>Existing DSH + Skill + tools"]
+    Native <-->|exec / events| DSH
   end
-  Bridge -->|Existing native CLI| Control
-  Control -->|Output + session evidence| Bridge
-  Control -->|Policy-approved egress only| External[Existing model provider / scoped APIs\nBusiness API owns data authorization]
+
+  app <-->|native CLI / execution + cleanup evidence| upstream
+
+  classDef host fill:#f5f7fa,stroke:#8a9aa8,color:#263e4e,stroke-width:1.5px
+  classDef bridge fill:#173d50,stroke:#173d50,color:#ffffff,stroke-width:2px
+  classDef native fill:#eaf4f0,stroke:#5d9385,color:#234d43,stroke-width:1.5px
+  classDef workload fill:#fff4e9,stroke:#c2935f,color:#664625,stroke-width:1.5px
+  class Host host
+  class Bridge bridge
+  class Native native
+  class DSH workload
+  style app fill:#fbfcfe,stroke:#b0bdc8,stroke-width:1px
+  style upstream fill:#f7fbf9,stroke:#a3c1b7,stroke-width:1px

@@ -14,10 +14,12 @@ TG Bot 是它的一种宿主，核心不依赖 Telegram 或 Koishi。
 > 当前提供具体接入实现和离线示例；部署准备和业务权限由宿主负责。
 > 尚未达到生产 Bot 平台或跨任意 Harness 通用运行时的完整程度。
 
-![Harness Bridge 架构：宿主权限、薄接入层和每任务独立的 OpenShell 执行环境](assets/architecture.svg)
+![Harness Bridge 系统总览](assets/architecture.svg)
 
-图中分别标出了**宿主提供的部分**、**已经实现的接入库**和**复用的上游系统**。
-实际部署仍须验证策略与挂载。[架构细节](docs/architecture.md) · [可编辑 SVG](assets/architecture.svg) · [Mermaid 源码](assets/architecture.mmd)
+接入库在可信宿主进程内运行，OpenShell 为现有 Harness 提供每任务新建的执行环境。
+存储、业务鉴权与用户交付仍由宿主负责。
+
+[隔离边界与任务时序](docs/architecture.md) · [Mermaid 源码](assets/architecture.mmd) · [重新生成图稿](docs/diagrams.md)
 
 ## 核心思想
 
@@ -128,7 +130,7 @@ if (result.status !== 'completed' || result.cleanup.status !== 'verified') {
 执行部分复用 [OpenShell](https://github.com/NVIDIA/OpenShell)、
 [DSH](https://github.com/deepseek-ai/deepseek-harness)、[Execa](https://github.com/sindresorhus/execa)，
 示例使用 [Koishi](https://github.com/koishijs/koishi)。
-原创架构图参考了 OpenShell 的可信边界表达、NanoClaw 的宿主与 Agent 分工，以及 C4 的职责标注方式。
+Mermaid 图稿参考了 OpenShell 的可信边界表达、OpenHands 的总览与细节分图及源码维护、n8n 的执行数据流、NanoClaw 的宿主与 Agent 分工，以及 C4 的职责标注。
 [参考与差异](docs/references.md) 说明了具体借鉴范围，没有复制上游图像素材。
 
 [Apache-2.0](LICENSE)。

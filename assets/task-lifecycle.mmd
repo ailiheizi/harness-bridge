@@ -1,0 +1,34 @@
+sequenceDiagram
+  accTitle: Bounded task execution and result release
+  accDescr: Main execution path through the authenticated host, bridge, OpenShell and DSH. Completion, execution failure or cancellation all lead to bounded owned cleanup. Unknown cleanup blocks success. Result authorization precedes return, user delivery remains the host's responsibility.
+  participant H as Host application
+  participant B as Harness Bridge
+  participant O as OpenShell
+  participant D as Existing DSH
+
+  H->>B: execute(trusted task, signal)
+  B->>H: authorizeAdmission
+  H-->>B: Allow
+  B->>O: Create sandbox, verify native identity
+  opt Ordinary Skill supplied
+    B->>O: Upload SKILL.md
+  end
+  B->>O: Upload DSH patch
+  B->>O: Fixed headless exec, prompt on stdin
+  O->>D: Start task
+  D-->>O: Final text + completed event + session ID
+  O-->>B: Native JSON event stream
+
+  Note over B,O: Cleanup survives cancellation.<br/>Separate deadline: up to 60s.
+  B->>O: Recheck ownership, stop, verify stopped
+  B->>O: Delete, verify generated name is absent
+
+  alt Cleanup verified
+    B->>H: authorizeResult
+    H-->>B: Allow or deny current result release
+    B-->>H: Completed / failed, or blocked if denied
+  else Cleanup uncertain
+    B->>H: authorizeResult for blocked result
+    B-->>H: Blocked, no successful output
+  end
+  Note over H,B: The host checks accounting and current audience before delivery.

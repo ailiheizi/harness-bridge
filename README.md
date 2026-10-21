@@ -18,11 +18,13 @@ no Telegram or Koishi dependency.
 > setup and business authorization remain host responsibilities. This is not
 > a production-ready bot platform or a universal Harness runtime.
 
-![Harness Bridge architecture: host authority, thin bridge and a fresh OpenShell-managed agent workload](assets/architecture.svg)
+![Harness Bridge system overview](assets/architecture.svg)
 
-The diagram separates the **host application**, the **implemented bridge**, and
-**reused upstream components**. Policy and mounts must be verified on the actual
-target. [Architecture details](docs/architecture.md) · [Editable SVG](assets/architecture.svg) · [Mermaid source](assets/architecture.mmd)
+The bridge runs inside your trusted app; OpenShell runs the existing Harness
+in a fresh task sandbox. Storage, business authorization and user delivery
+stay with the host.
+
+[Isolation boundary and task sequence](docs/architecture.md) · [Mermaid source](assets/architecture.mmd) · [Regenerate diagrams](docs/diagrams.md)
 
 ## The idea
 
@@ -149,9 +151,11 @@ The private experiment is context, not a public acceptance certificate. The
 We reuse [OpenShell](https://github.com/NVIDIA/OpenShell),
 [DSH](https://github.com/deepseek-ai/deepseek-harness),
 [Execa](https://github.com/sindresorhus/execa), and optional
-[Koishi](https://github.com/koishijs/koishi). The original architecture artwork
-learns from OpenShell's trust-boundary presentation, NanoClaw's host/agent
-separation, and C4's responsibility labels. [References and differences](docs/references.md)
+[Koishi](https://github.com/koishijs/koishi). The Mermaid diagrams learn from
+OpenShell's trust-boundary presentation,
+OpenHands' overview/detail split and source-based maintenance, n8n's focused
+execution-flow diagrams, NanoClaw's host/agent separation, and C4's
+responsibility labels. [References and differences](docs/references.md)
 explain each relationship; no upstream diagram assets were copied.
 
 [Apache-2.0](LICENSE).

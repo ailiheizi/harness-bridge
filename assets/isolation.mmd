@@ -1,0 +1,37 @@
+flowchart LR
+  accTitle: Harness Bridge isolation and authority boundary
+  accDescr: The host and OpenShell supervision are trusted. Existing DSH runs in a fresh Docker workload. Network calls pass through OpenShell policy. Optional business APIs remain host-owned and must enforce their own data authorization.
+
+  subgraph host["Trusted host application"]
+    App["Authenticated app<br/>Identity · current permissions"]
+    Bridge["Harness Bridge"]
+    API["Optional business API<br/>Row · field · resource checks"]
+    App --> Bridge
+  end
+
+  subgraph trusted["Trusted OpenShell components"]
+    Control["Native control plane<br/>Lifecycle · policy · providers"]
+    Supervisor["Trusted supervisor<br/>Policy-approved egress"]
+  end
+
+  subgraph task["Untrusted workload · fresh Docker sandbox"]
+    DSH["Existing DSH + tools<br/>Task code · workspace"]
+  end
+
+  Bridge -->|fixed native CLI| Control
+  Control -->|create / upload / exec| DSH
+  DSH -->|network requests| Supervisor
+  Supervisor -->|approved model access| Provider["External model provider"]
+  Supervisor -.->|if explicitly configured| API
+
+  classDef host fill:#f5f7fa,stroke:#8a9aa8,color:#263e4e,stroke-width:1.5px
+  classDef bridge fill:#173d50,stroke:#173d50,color:#ffffff,stroke-width:2px
+  classDef native fill:#eaf4f0,stroke:#5d9385,color:#234d43,stroke-width:1.5px
+  classDef workload fill:#fff4e9,stroke:#c2935f,color:#664625,stroke-width:1.5px
+  class App,API host
+  class Bridge bridge
+  class Control,Supervisor,Provider native
+  class DSH workload
+  style host fill:#fbfcfe,stroke:#b0bdc8,stroke-width:1px
+  style trusted fill:#f7fbf9,stroke:#a3c1b7,stroke-width:1px
+  style task fill:#fffaf5,stroke:#cda673,stroke-width:2px,stroke-dasharray:6 4
