@@ -17,7 +17,7 @@ try {
   await writeFile(browserConfig, JSON.stringify({
     ...(process.env.PUPPETEER_EXECUTABLE_PATH ? { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH } : {}),
   }));
-  for (const name of ['architecture', 'isolation', 'task-lifecycle', 'capacity-reuse']) {
+  for (const name of ['current-architecture', 'current-architecture.zh-CN', 'architecture', 'isolation', 'task-lifecycle', 'capacity-reuse']) {
     const source = join(repoRoot, 'assets', `${name}.mmd`);
     const output = join(repoRoot, 'assets', `${name}.svg`);
     const child = spawnSync(process.execPath, [cli,

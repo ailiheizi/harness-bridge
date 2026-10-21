@@ -1,0 +1,39 @@
+---
+title: Harness Bridge · Current implementation
+config:
+  flowchart:
+    wrappingWidth: 340
+    nodeSpacing: 32
+    rankSpacing: 24
+    padding: 16
+---
+flowchart TB
+  accTitle: Harness Bridge current binding and host responsibilities
+  accDescr: Gray nodes are host-provided capabilities, blue nodes are implemented bridge behavior, and green nodes reuse OpenShell and DSH. The host selects its code path or calls the bridge. OpenShell creates a fresh Docker sandbox for each DSH task. Owned cleanup and result authorization precede return to the host. Business authorization and actual delivery remain host responsibilities. This is a call flow, not a physical deployment topology. No warm pool or VM backend is implemented.
+
+  Input["HOST · Receiver<br/>Koishi command example / bring your own adapter"]
+  App["HOST · Application and storage<br/>Identity, tenant rules, business access, persistence"]
+  Code["HOST · Approved code / plugins<br/>Integrated and called by the host"]
+  Bridge["LIBRARY · Harness Bridge<br/>execute() · host auth callbacks · limits / cancellation<br/>Ownership checks · fixed OpenShell CLI calls"]
+  Sandbox["Fresh Docker sandbox for each task<br/>Created by OpenShell · existing DSH + optional Skill<br/>Configured tools · temporary workspace"]
+
+  Cleanup["LIBRARY · Cleanup and result return<br/>Stop → delete → check name absence<br/>Result authorization → BridgeResult"]
+  Review["HOST · Review and delivery<br/>Check status, current access, audience and accounting"]
+  Output["Message reply / API result / approved artifact<br/>Actually delivered by the host"]
+
+  Input --> App
+  App -->|Host selects: predictable task| Code
+  App -->|Host selects: Agent task| Bridge
+  Bridge --> Sandbox
+  Sandbox -->|Finish / fail / cancel| Cleanup
+  Code --> Review
+  Cleanup -->|completed / failed / blocked| Review
+  Review -->|Only if host permits| Output
+
+  classDef host fill:#f5f7fa,stroke:#9caebc,color:#273e4d,stroke-width:1.2px,rx:10,ry:10
+  classDef bridge fill:#edf4ff,stroke:#4f76b2,color:#173e73,stroke-width:1.8px,rx:10,ry:10
+  classDef existing fill:#eef8f3,stroke:#76a68d,color:#245d44,stroke-width:1.2px,rx:10,ry:10
+  class Input,App,Code,Review,Output host
+  class Bridge,Cleanup bridge
+  class Sandbox existing
+  style Sandbox stroke-width:1.5px,stroke-dasharray:6 4

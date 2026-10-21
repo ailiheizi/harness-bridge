@@ -5,7 +5,9 @@ exports of that source, not separate manually maintained drawings.
 
 | Purpose | Source | SVG | PNG |
 | --- | --- | --- | --- |
-| README input / execution / output | [architecture.mmd](../assets/architecture.mmd) | [SVG](../assets/architecture.svg) | [PNG](../assets/architecture.png) |
+| README current binding (English) | [current-architecture.mmd](../assets/current-architecture.mmd) | [SVG](../assets/current-architecture.svg) | [PNG](../assets/current-architecture.png) |
+| README current binding (Chinese) | [current-architecture.zh-CN.mmd](../assets/current-architecture.zh-CN.mmd) | [SVG](../assets/current-architecture.zh-CN.svg) | [PNG](../assets/current-architecture.zh-CN.png) |
+| Detailed flexible-task example | [architecture.mmd](../assets/architecture.mmd) | [SVG](../assets/architecture.svg) | [PNG](../assets/architecture.png) |
 | Isolation and authority | [isolation.mmd](../assets/isolation.mmd) | [SVG](../assets/isolation.svg) | [PNG](../assets/isolation.png) |
 | Bounded task lifecycle | [task-lifecycle.mmd](../assets/task-lifecycle.mmd) | [SVG](../assets/task-lifecycle.svg) | [PNG](../assets/task-lifecycle.png) |
 | Current preparation / proposed clean capacity | [capacity-reuse.mmd](../assets/capacity-reuse.mmd) | [SVG](../assets/capacity-reuse.svg) | [PNG](../assets/capacity-reuse.png) |
@@ -37,7 +39,7 @@ browser download and pass its path when rendering:
 PUPPETEER_EXECUTABLE_PATH=/absolute/path/to/chrome npm run render
 ```
 
-`render.mjs` calls the pinned Mermaid CLI for all four SVGs, then renders PNGs
+`render.mjs` calls the pinned Mermaid CLI for all six SVGs, then renders PNGs
 from those same SVGs with Sharp. The export step preserves SVG whitespace
 and flattens PNGs onto white for consistent reading. The shared `mermaid.json` keeps colors, labels
 and line styles consistent. Locally pinned Lucide and Simple Icons packs
@@ -52,7 +54,12 @@ and documentation scale. Commit the source and exports together. Do not patch
 node coordinates or text in an exported SVG. Keep implementation claims tied
 to the native contracts in `src/bridge.mjs` and `index.d.mts`.
 
-The overview shows input, execution and output with a concrete host example. The isolation view answers where trust
+The README images preserve the text diagram's two branches and mark current
+ownership explicitly: host-provided capabilities, implemented bridge behavior,
+and reused systems. The host selects its path; the library does not implement a
+router or the depicted host features. Text fallbacks remain in both READMEs.
+
+The detailed overview shows input, execution and output with a concrete host example. The isolation view answers where trust
 and authorization sit. The sequence answers when execution, cleanup and result
 release occur. Policy limitations and deployment prerequisites belong in the
 accompanying [architecture text](architecture.md), not long paragraphs inside

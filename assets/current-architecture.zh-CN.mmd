@@ -1,0 +1,39 @@
+---
+title: Harness Bridge · 当前实现
+config:
+  flowchart:
+    wrappingWidth: 340
+    nodeSpacing: 32
+    rankSpacing: 24
+    padding: 16
+---
+flowchart TB
+  accTitle: Harness Bridge 当前接入形态与宿主职责
+  accDescr: 灰色为接入方负责的宿主能力，蓝色为本库已实现的接入和清理，绿色为复用的 OpenShell 与 DSH。宿主选择已有代码路径或调用 Bridge；Bridge 通过 OpenShell 为每个任务新建 Docker 沙箱，运行现有 DSH，清理后经过结果释放鉴权返回。业务权限和实际交付由宿主负责。图为调用流程，不是物理部署拓扑。没有实现预热池或虚拟机后端。
+
+  Input["宿主 · 接收端<br/>Koishi 命令示例 / 其他入口自行接入"]
+  App["宿主 · 应用与存储<br/>身份、租户规则、业务权限、持久化"]
+  Code["宿主 · 已审核代码 / 插件<br/>自行集成与调用"]
+  Bridge["本库 · Harness Bridge<br/>execute() · 宿主鉴权回调 · 时限 / 取消<br/>核对归属 · 固定 OpenShell CLI 调用"]
+  Sandbox["每任务全新 Docker 沙箱<br/>OpenShell 创建 · 现有 DSH + 可选 Skill<br/>配置的工具 · 临时工作区"]
+
+  Cleanup["本库 · 清理与结果返回<br/>停止 → 删除 → 名称消失检查<br/>结果释放鉴权 → BridgeResult"]
+  Review["宿主 · 复核与交付<br/>检查状态、当前权限、接收范围与计量"]
+  Output["消息回复 / API 结果 / 获准产物<br/>由宿主实际交付"]
+
+  Input --> App
+  App -->|宿主选择：固定任务| Code
+  App -->|宿主选择：Agent 任务| Bridge
+  Bridge --> Sandbox
+  Sandbox -->|结束 / 失败 / 取消| Cleanup
+  Code --> Review
+  Cleanup -->|completed / failed / blocked| Review
+  Review -->|仅在宿主允许时| Output
+
+  classDef host fill:#f5f7fa,stroke:#9caebc,color:#273e4d,stroke-width:1.2px,rx:10,ry:10
+  classDef bridge fill:#edf4ff,stroke:#4f76b2,color:#173e73,stroke-width:1.8px,rx:10,ry:10
+  classDef existing fill:#eef8f3,stroke:#76a68d,color:#245d44,stroke-width:1.2px,rx:10,ry:10
+  class Input,App,Code,Review,Output host
+  class Bridge,Cleanup bridge
+  class Sandbox existing
+  style Sandbox stroke-width:1.5px,stroke-dasharray:6 4

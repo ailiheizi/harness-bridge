@@ -18,6 +18,15 @@ no Telegram or Koishi dependency.
 > setup and business authorization remain host responsibilities. This is not
 > a production-ready bot platform or a universal Harness runtime.
 
+![Harness Bridge current implementation and host responsibilities](assets/current-architecture.svg)
+
+Gray means host-provided capabilities; blue means implemented bridge behavior;
+green means reused systems. The host selects the path. The core does not ship
+receivers, business storage or automatic task routing.
+
+<details>
+<summary>Text version</summary>
+
 ```text
                         TG / Web / API / CLI
                                   ↓
@@ -38,6 +47,8 @@ no Telegram or Koishi dependency.
                                   ↓
                Reply / API result / approved artifact
 ```
+
+</details>
 
 Predictable tasks use existing code; flexible tasks use an isolated Harness.
 The host decides final delivery for both paths. Receivers, storage, business

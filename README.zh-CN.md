@@ -14,6 +14,14 @@ TG Bot 是它的一种宿主，核心不依赖 Telegram 或 Koishi。
 > 当前提供具体接入实现和离线示例；部署准备和业务权限由宿主负责。
 > 尚未达到生产 Bot 平台或跨任意 Harness 通用运行时的完整程度。
 
+![Harness Bridge 当前实现与宿主职责](assets/current-architecture.zh-CN.svg)
+
+灰色为宿主需提供的能力，蓝色为本库已实现的接入与清理，绿色为复用的现有系统。
+图中分流由宿主决定；核心库不自带接收端、业务存储或自动任务路由。
+
+<details>
+<summary>展开文字版架构</summary>
+
 ```text
                         TG / Web / API / CLI
                                   ↓
@@ -34,6 +42,8 @@ TG Bot 是它的一种宿主，核心不依赖 Telegram 或 Koishi。
                                   ↓
                      回复 / API 结果 / 获准产物
 ```
+
+</details>
 
 固定任务走已有代码，需要灵活判断的任务走隔离 Harness，两条路径都由宿主决定最终交付。
 接收端、存储、业务鉴权与代码插件由宿主提供；沙箱访问业务能力时，也必须在实际 CLI / API 边界校验权限。
