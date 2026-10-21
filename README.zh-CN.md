@@ -16,10 +16,10 @@ TG Bot 是它的一种宿主，核心不依赖 Telegram 或 Koishi。
 
 ![Harness Bridge 系统总览](assets/architecture.svg)
 
-接入库在可信宿主进程内运行，OpenShell 为现有 Harness 提供每任务新建的执行环境。
-存储、业务鉴权与用户交付仍由宿主负责。
+这张图沿着一条灵活任务展示：消息或 API 输入 → 宿主确认身份与规则 → 隔离执行 → 清理与证据 → 宿主交付回复。
+编号区域表示流程阶段；Telegram/HTTP 入口、存储、业务鉴权与实际回复由宿主应用提供。
 
-[隔离边界与任务时序](docs/architecture.md) · [Mermaid 源码](assets/architecture.mmd) · [重新生成图稿](docs/diagrams.md)
+[具体输入与输出](docs/input-output.md) · [隔离与时序](docs/architecture.md) · [复用与池方案](docs/reuse.md) · [Mermaid 源码](assets/architecture.mmd)
 
 ## 核心思想
 
@@ -51,6 +51,18 @@ Harness Bridge 先用一个小而明确的接入模块把这些职责连接起�
 
 当前绑定验证的是 **OpenShell CLI 0.1.3 的行为**与 **`@deepseek-ai/dsh@0.2.0-rc.2`**。
 其他版本或 Harness 需要单独适配与验收。本实现只保留 OpenShell + Docker 一条隔离路径。
+
+## 复用到哪一层？
+
+**当前已经有的路径：** 每个任务创建新的 Docker 沙箱，结束后进行有界清理。
+部署可以共享不可变镜像与依赖准备；接入库本身不管理缓存，也没有实测缓存命中或提速。
+可写工作区、Agent 会话和执行过的实例不跨任务共享。
+
+**尚未实现的优化方案：** 只有 OpenShell 原生能力与实测支持时，才考虑“预热未使用的干净容量 → 独占单次领取 → 执行 → 销毁 → 补充全新容量”。
+当前没有虚拟机后端、暖池或“用后擦除再派发”的池。
+[当前与提议方案的生命周期图及门槛](docs/reuse.md) 已单独说明。
+
+![当前共享准备与未实现的干净容量预热方案](assets/capacity-reuse.svg)
 
 ## 先跑离线示例
 
@@ -124,6 +136,7 @@ if (result.status !== 'completed' || result.cleanup.status !== 'verified') {
 ## 文档与借鉴
 
 - [核心设计](docs/design.md)、[架构与生命周期](docs/architecture.md)、[决策理由 ADR](docs/adr/)
+- [具体输入与输出](docs/input-output.md)、[复用边界](docs/reuse.md)、[图稿构建](docs/diagrams.md)、[图标许可](THIRD_PARTY_NOTICES.md)
 - [接入指南](docs/QUICKSTART.md)、[Koishi 示例](examples/koishi/README.md)、[原生验收前提](docs/NATIVE-ACCEPTANCE.md)
 - [依赖与限制](docs/DEPENDENCIES.md)、[贡献指南](CONTRIBUTING.md)
 

@@ -1,30 +1,57 @@
 flowchart TB
-  accTitle: Harness Bridge system overview
-  accDescr: A trusted application calls the bridge library in its own process. The bridge uses the OpenShell native CLI to run existing DSH in a fresh Docker sandbox. The host keeps storage and user delivery; the bridge returns execution and cleanup evidence.
+  accTitle: From user input to an isolated task and a verified result
+  accDescr: Illustrative flexible-task path. Host-owned Telegram or HTTP entrypoints verify identity and build a trusted request. Harness Bridge uses OpenShell Docker to run existing DSH with an optional Skill and configured tools. Owned cleanup precedes structured results; the host separately authorizes delivery. Flow groups are stages, not deployment trust boundaries. No warm pool is implemented.
 
-  subgraph app["Your application · trusted process"]
+  subgraph input["1 · INPUT — host-owned entrypoints"]
     direction LR
-    Host["Bot / API<br/>Event receiver"]
-    Bridge["Harness Bridge<br/>Task lifecycle"]
-    Host <-->|trusted task / gated result| Bridge
+    TG@{ icon: "simple-icons:telegram", form: "rounded", label: "Telegram message<br/>Summarize this text", h: 52 }
+    HTTP@{ icon: "lucide:webhook", form: "rounded", label: "HTTP / external event<br/>Host-provided adapter", h: 52 }
+    Auth@{ icon: "lucide:shield-check", form: "rounded", label: "Verify actor + group<br/>Apply current permissions", h: 52 }
+    Request@{ icon: "lucide:file-json", form: "rounded", label: "Trusted task<br/>IDs + prompt + optional Skill", h: 52 }
+    TG --> Auth
+    HTTP --> Auth
+    Auth --> Request
   end
 
-  subgraph upstream["Reused OpenShell · Docker only"]
+  subgraph execution["2 · EXECUTION — existing OpenShell + DSH"]
     direction LR
-    Native["OpenShell<br/>Native control plane"]
-    DSH["Fresh task sandbox<br/>Existing DSH + Skill + tools"]
-    Native <-->|exec / events| DSH
+    Bridge@{ icon: "lucide:workflow", form: "rounded", label: "Harness Bridge<br/>Authorize + bound + track", h: 52 }
+    Docker@{ icon: "simple-icons:docker", form: "rounded", label: "Fresh Docker sandbox<br/>Upload Skill + DSH patch", h: 52 }
+    DSH@{ icon: "lucide:bot", form: "rounded", label: "Existing DSH Harness<br/>Reason + run configured tools", h: 52 }
+    Model@{ icon: "lucide:sparkles", form: "rounded", label: "External model provider<br/>Policy-approved access", h: 52 }
+    Bridge -->|native CLI| Docker
+    Docker -->|prompt on stdin| DSH
+    DSH <-->|via native policy| Model
   end
 
-  app <-->|native CLI / execution + cleanup evidence| upstream
+  subgraph output["3 · OUTPUT — cleanup, evidence, then host delivery"]
+    direction LR
+    Cleanup@{ icon: "lucide:circle-check", form: "rounded", label: "Owned cleanup<br/>Stop + delete + verify absence", h: 52 }
+    Result@{ icon: "lucide:file-check-2", form: "rounded", label: "Result object<br/>status + evidence + success output", h: 52 }
+    Reply@{ icon: "lucide:message-square-text", form: "rounded", label: "Host-authorized reply<br/>Summary in the original chat", h: 52 }
+    Cleanup -->|verified or blocked| Result
+    Result -->|approved success only| Reply
+  end
 
-  classDef host fill:#f5f7fa,stroke:#8a9aa8,color:#263e4e,stroke-width:1.5px
-  classDef bridge fill:#173d50,stroke:#173d50,color:#ffffff,stroke-width:2px
-  classDef native fill:#eaf4f0,stroke:#5d9385,color:#234d43,stroke-width:1.5px
-  classDef workload fill:#fff4e9,stroke:#c2935f,color:#664625,stroke-width:1.5px
-  class Host host
+  input -->|trusted request to execute| execution
+  execution -->|finish / fail / cancel| output
+
+  classDef source fill:#eff7fd,stroke:#90b5d3,color:#2078ad,stroke-width:1px
+  classDef trusted fill:#f0f4f8,stroke:#94a9b9,color:#2a5068,stroke-width:1px
+  classDef bridge fill:#e8f0f6,stroke:#507894,color:#153f5a,stroke-width:2px
+  classDef runtime fill:#edf6f1,stroke:#85b09d,color:#2c7d5b,stroke-width:1px
+  classDef provider fill:#f3effb,stroke:#ac9bc7,color:#7653a6,stroke-width:1px
+  classDef result fill:#edf7f4,stroke:#8db8a9,color:#28785d,stroke-width:1px
+  classDef telegram fill:#eff8ff,stroke:#229ed9,color:#226d97,stroke-width:1px
+  classDef dockerbrand fill:#edf8fe,stroke:#2496ed,color:#226c9e,stroke-width:1px
+  class TG telegram
+  class HTTP source
+  class Auth,Request trusted
   class Bridge bridge
-  class Native native
-  class DSH workload
-  style app fill:#fbfcfe,stroke:#b0bdc8,stroke-width:1px
-  style upstream fill:#f7fbf9,stroke:#a3c1b7,stroke-width:1px
+  class Docker dockerbrand
+  class DSH runtime
+  class Model provider
+  class Cleanup,Result,Reply result
+  style input fill:#f8fbfe,stroke:#bccddb,stroke-width:1px
+  style execution fill:#f7fbf9,stroke:#afcbbb,stroke-width:1px
+  style output fill:#f7fbfa,stroke:#afccbf,stroke-width:1px

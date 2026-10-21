@@ -37,7 +37,8 @@ synthetic identities and mock dispatch only.
 ## Optional diagram tooling
 
 `tools/diagrams` is an independent documentation-only package and lockfile.
-It pins Mermaid CLI `12.0.0` and Sharp `0.35.5`; its KaTeX stylesheet dependency
+It pins Mermaid CLI `12.0.0`, Sharp `0.35.5`, Lucide icon data `1.2.147`, and
+Simple Icons data `1.2.100`; its KaTeX stylesheet dependency
 is overridden to patched `0.18.10`. The locked tool graph audited with zero
 known vulnerabilities on 2026-10-21. It is not imported or included by the
 bridge runtime package. See [diagram maintenance](diagrams.md) for rendering

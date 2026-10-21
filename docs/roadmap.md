@@ -26,6 +26,20 @@ general Harness support.
 - Independently verify controller-owned roles, volumes, and other external
   resources after native acceptance.
 
+## Capacity optimization research
+
+- The current bridge creates and deletes one fresh Docker-backed OpenShell
+  sandbox per task. Existing image-layer or dependency caching may be shared
+  by the deployment, but the bridge has not measured or claimed a performance
+  benefit from it.
+- Do not add instance pooling, VM isolation, or a local capacity service.
+  Consider only an OpenShell-native, unused clean capacity unit leased once,
+  run once, destroyed, then replenished, and only after native lifecycle
+  evidence and a representative benchmark. A used or uncertain instance must
+  not be wiped and returned to dispatch; pause is not reset.
+- The host application owns concurrency, admission, and capacity accounting.
+  See [reuse boundary](reuse.md) and [ADR 0006](adr/0006-clean-capacity-reuse.md).
+
 ## Expansion rule
 
 Do not add another isolation backend, Harness loop, provider router, tool

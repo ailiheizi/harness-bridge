@@ -9,6 +9,8 @@
     "render": "node render.mjs"
   },
   "devDependencies": {
+    "@iconify-json/lucide": "1.2.147",
+    "@iconify-json/simple-icons": "1.2.100",
     "@mermaid-js/mermaid-cli": "12.0.0",
     "sharp": "0.35.5"
   },

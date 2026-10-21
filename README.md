@@ -20,11 +20,12 @@ no Telegram or Koishi dependency.
 
 ![Harness Bridge system overview](assets/architecture.svg)
 
-The bridge runs inside your trusted app; OpenShell runs the existing Harness
-in a fresh task sandbox. Storage, business authorization and user delivery
-stay with the host.
+Follow a flexible task from a Telegram message or host API to trusted input,
+an isolated DSH run, cleanup evidence and a host-authorized reply. The numbered
+bands are flow stages; Telegram/HTTP entrypoints, storage, business permissions
+and final delivery belong to the host.
 
-[Isolation boundary and task sequence](docs/architecture.md) · [Mermaid source](assets/architecture.mmd) · [Regenerate diagrams](docs/diagrams.md)
+[Input/output example](docs/input-output.md) · [Isolation and task sequence](docs/architecture.md) · [Reuse and pool proposal](docs/reuse.md) · [Mermaid source](assets/architecture.mmd)
 
 ## The idea
 
@@ -61,6 +62,20 @@ The binding targets **OpenShell CLI 0.1.3 behavior** and
 **`@deepseek-ai/dsh@0.2.0-rc.2`**. Other versions and Harnesses require their own
 contract and live validation. The only isolation path in this implementation
 is OpenShell + Docker.
+
+## What gets reused?
+
+**Today:** every task gets a fresh Docker sandbox and bounded cleanup.
+Deployments can share immutable image/dependency preparation; the bridge does
+not measure or manage those caches. Writable workspaces, Agent sessions and
+used instances are not shared across tasks.
+
+**Proposed, not implemented:** if OpenShell-native support and measurements
+justify it, unused clean capacity could be leased once, run once, destroyed,
+and replenished. There is no VM backend, warm pool or reset-and-reassign pool
+in the current package. [Current/proposed lifecycle diagram and gates](docs/reuse.md)
+
+![Shared preparation today and proposed single-use clean capacity](assets/capacity-reuse.svg)
 
 ## Try the source
 
@@ -141,6 +156,8 @@ The private experiment is context, not a public acceptance certificate. The
 
 - [Design and core ideas](docs/design.md)
 - [Architecture and lifecycle](docs/architecture.md)
+- [Concrete input/output](docs/input-output.md) and [reuse boundary](docs/reuse.md)
+- [Rebuild diagrams](docs/diagrams.md) and [icon notices](THIRD_PARTY_NOTICES.md)
 - [Architecture decision records](docs/adr/)
 - [Host integration quickstart](docs/QUICKSTART.md)
 - [Koishi consumer example](examples/koishi/README.md)

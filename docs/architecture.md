@@ -14,7 +14,13 @@ DSH are reused systems, not bridge-owned runtimes. The host keeps persistence,
 business policy and delivery. The overview shows the main call and result
 paths; it is not a physical deployment topology.
 
-[Mermaid source](../assets/architecture.mmd)
+The numbered overview follows a flexible Agent task. Telegram/HTTP/event
+entrypoints and final delivery belong to the host; the bridge does not ship
+an HTTP server or a natural-language Telegram router. The colored bands show
+flow stages, not trust boundaries. Only approved success reaches the depicted
+summary reply; failed or blocked results must not be delivered as success.
+
+[Mermaid source](../assets/architecture.mmd) · [Concrete input/output example](input-output.md)
 
 ## Isolation and authority boundary
 
@@ -112,3 +118,16 @@ success and delivery are host-owned outcomes.
 The binding reuses OpenShell's Docker path only. It does not imply a second
 backend, microVM, complete network-egress guarantee, or universal host
 isolation. See [validation](validation.md) for what recorded tests establish.
+
+## Shared preparation and future capacity reuse
+
+![Current sharing and proposed clean capacity](../assets/capacity-reuse.svg)
+
+The green panel describes the current fresh-task lifecycle with deployment-side
+image preparation. It does not establish a cache hit or speed gain. The amber
+dashed panel is a proposal, **not implemented**: unused clean Docker capacity
+would be claimed once, used once, destroyed and replenished. There is no VM
+backend or used-instance reset pool. Task A and B are distinct invocation
+examples, not a built-in concurrency scheduler.
+
+[Reuse scope and evidence gates](reuse.md) · [Mermaid source](../assets/capacity-reuse.mmd)

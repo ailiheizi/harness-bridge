@@ -9,3 +9,4 @@ into current capability.
 - [0003 — Host owns business authority](0003-host-owns-authority.md)
 - [0004 — Fresh sandbox and conservative cleanup](0004-fresh-sandbox-cleanup.md)
 - [0005 — Evidence stays scoped](0005-evidence-stays-scoped.md)
+- [0006 — Research clean-capacity reuse only with native evidence](0006-clean-capacity-reuse.md)

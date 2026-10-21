@@ -1,0 +1,33 @@
+flowchart TB
+  accTitle: What is shared today and what a future clean-capacity pool would mean
+  accDescr: Current executions may share immutable image and dependency layers prepared by the deployment, but each task gets its own new sandbox and cleanup. A future native Docker clean-capacity optimization is only proposed: lease unused clean capacity once, destroy the used sandbox and replenish with new clean capacity. There is no VM backend, used-instance reset pool, or implemented warm pool.
+
+  subgraph current["CURRENT — shared preparation, separate task lifetimes"]
+    direction LR
+    Image@{ icon: "lucide:layers", form: "rounded", label: "Shared image layers<br/>Prebuilt dependencies", pos: "t", h: 52 }
+    A@{ icon: "simple-icons:docker", form: "rounded", label: "Fresh sandbox A<br/>Run task A once", h: 52 }
+    B@{ icon: "simple-icons:docker", form: "rounded", label: "Fresh sandbox B<br/>Run task B once", h: 52 }
+    GoneA@{ icon: "lucide:circle-check", form: "rounded", label: "Stop + delete A<br/>Verify name absent", h: 52 }
+    GoneB@{ icon: "lucide:circle-check", form: "rounded", label: "Stop + delete B<br/>Verify name absent", h: 52 }
+    Image --> A --> GoneA
+    Image --> B --> GoneB
+  end
+
+  subgraph future["PROPOSED ONLY — unused clean Docker capacity; not implemented"]
+    direction LR
+    Clean@{ icon: "lucide:boxes", form: "rounded", label: "Unused clean capacity<br/>No tenant data or session", h: 52 }
+    Lease@{ icon: "lucide:package-check", form: "rounded", label: "Exclusive one-time lease<br/>Bind task + tenant + owner", h: 52 }
+    Run@{ icon: "lucide:bot", form: "rounded", label: "Run one task<br/>Never reassign used state", h: 52 }
+    Destroy@{ icon: "lucide:circle-check", form: "rounded", label: "Destroy used sandbox<br/>Verify cleanup", h: 52 }
+    Replace@{ icon: "lucide:refresh-cw", form: "rounded", label: "Create a new clean instance<br/>Replenish bounded capacity", h: 52 }
+    Clean --> Lease --> Run --> Destroy --> Replace
+  end
+
+  current -.->|optional future optimization, gated by native support + measurements| future
+
+  classDef existing fill:#edf6f1,stroke:#85b09d,color:#2c7d5b,stroke-width:1px
+  classDef proposed fill:#fff6e9,stroke:#c49b5c,color:#986925,stroke-width:1.5px,stroke-dasharray:5 4
+  class Image,A,B,GoneA,GoneB existing
+  class Clean,Lease,Run,Destroy,Replace proposed
+  style current fill:#f7fbf9,stroke:#afcbbb,stroke-width:1px
+  style future fill:#fffbf4,stroke:#c49b5c,stroke-width:2px,stroke-dasharray:7 5

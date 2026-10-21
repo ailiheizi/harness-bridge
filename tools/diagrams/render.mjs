@@ -17,7 +17,7 @@ try {
   await writeFile(browserConfig, JSON.stringify({
     ...(process.env.PUPPETEER_EXECUTABLE_PATH ? { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH } : {}),
   }));
-  for (const name of ['architecture', 'isolation', 'task-lifecycle']) {
+  for (const name of ['architecture', 'isolation', 'task-lifecycle', 'capacity-reuse']) {
     const source = join(repoRoot, 'assets', `${name}.mmd`);
     const output = join(repoRoot, 'assets', `${name}.svg`);
     const child = spawnSync(process.execPath, [cli,
@@ -25,7 +25,8 @@ try {
       '--configFile', join(toolRoot, 'mermaid.json'),
       '--puppeteerConfigFile', browserConfig,
       '--backgroundColor', 'white', '--size', '1600', '--no-font-embed',
-    ], { stdio: 'inherit', timeout: 90_000 });
+      '--iconPacks', '@iconify-json/lucide', '@iconify-json/simple-icons',
+    ], { cwd: toolRoot, stdio: 'inherit', timeout: 90_000 });
     if (child.error) throw child.error;
     if (child.status !== 0) throw new Error(`Mermaid render failed: ${name}`);
     // Preserve whitespace between Mermaid's word-level SVG tspans across
