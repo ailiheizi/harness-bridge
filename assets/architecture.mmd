@@ -1,0 +1,24 @@
+flowchart LR
+  subgraph Host[Trusted host application — integrator-owned]
+    Receive[Bot / API / external event]
+    Authority[Authenticated task context\nCurrent permissions]
+    Fast[Approved deterministic code\nExisting storage and plugins]
+    Bridge[Harness Bridge\nAdmission · native identity · execution\nBounded cleanup · result gate]
+    Deliver[Current audience / accounting checks\nPersistence and delivery]
+    Receive --> Authority
+    Authority --> Fast
+    Authority --> Bridge
+    Fast --> Deliver
+    Bridge --> Deliver
+  end
+  subgraph Native[Reused OpenShell — Docker binding]
+    Control[Native CLI / trusted control plane\nLifecycle · policy · provider configuration]
+    subgraph Workload[Fresh untrusted task workload]
+      DSH[Existing DSH headless Harness\nOrdinary Skill + tools + workspace]
+    end
+    Control --> DSH
+    DSH --> Control
+  end
+  Bridge -->|Existing native CLI| Control
+  Control -->|Output + session evidence| Bridge
+  Control -->|Policy-approved egress only| External[Existing model provider / scoped APIs\nBusiness API owns data authorization]

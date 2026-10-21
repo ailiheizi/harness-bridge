@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm ci --ignore-scripts
+        working-directory: examples/koishi
+      - run: npm test
+        working-directory: examples/koishi
+      - run: npm run test:native-config
+        working-directory: examples/koishi
+      - run: node --test --test-concurrency=1 native-cancel-checks.mjs
+        working-directory: examples/koishi

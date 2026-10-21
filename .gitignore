@@ -1,0 +1,32 @@
+# Dependencies and generated package artifacts
+node_modules/
+**/node_modules/
+*.tgz
+*.tar.gz
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local runtime state, credentials, and configuration
+.local/
+**/.local/
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*credentials*
+*secret*
+*token*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

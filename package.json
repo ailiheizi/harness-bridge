@@ -1,0 +1,47 @@
+{
+  "name": "@actweave/harness-bridge",
+  "version": "0.1.6-preview.1",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "description": "Thin host-to-Harness binding for isolated OpenShell Docker and DSH execution",
+  "exports": {
+    ".": {
+      "types": "./index.d.mts",
+      "import": "./index.mjs"
+    }
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1"
+  },
+  "files": [
+    "index.mjs",
+    "index.d.ts",
+    "index.d.mts",
+    "src/bridge.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "execa": "10.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ailiheizi/harness-bridge.git"
+  },
+  "homepage": "https://github.com/ailiheizi/harness-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/ailiheizi/harness-bridge/issues"
+  },
+  "keywords": [
+    "agent",
+    "harness",
+    "skills",
+    "openshell",
+    "docker",
+    "dsh"
+  ]
+}
