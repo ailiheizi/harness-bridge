@@ -1,182 +1,97 @@
 # Harness Bridge
 
-**把可信应用接入隔离的 Agent Harness 执行环境。**
+**一个可运行的 Telegram Bot 案例，以及可直接调用的 OpenShell + DSH 接入库。**
 
-[English](README.md) · [接入指南](docs/QUICKSTART.md) · [设计](docs/design.md) · [ADR](docs/adr/) · [验证记录](docs/validation.md)
-
-Harness Bridge 想验证一个简单的想法：**用普通 Skill 描述需要判断的方法，用可复用代码承接稳定任务，让现有系统完成实际工作。**
-宿主应用掌握身份、数据与结果交付，现有 Harness 运行 Agent，现有隔离系统约束执行环境。
-
-目前提供一个很薄的 JavaScript 接入库，把可信宿主请求连接到 **OpenShell 的 Docker 生命周期**和现有 **DSH headless Harness**。
-TG Bot 是它的一种宿主，核心不依赖 Telegram 或 Koishi。
-
-> **源码预览版 · `0.1.6-preview.1`**
-> 当前提供具体接入实现和离线示例；部署准备和业务权限由宿主负责。
-> 尚未达到生产 Bot 平台或跨任意 Harness 通用运行时的完整程度。
-
-![Harness Bridge 当前实现与宿主职责](assets/current-architecture.zh-CN.svg)
-
-灰色为宿主需提供的能力，蓝色为本库已实现的接入与清理，绿色为复用的现有系统。
-图中分流由宿主决定；核心库不自带接收端、业务存储或自动任务路由。
-
-<details>
-<summary>展开文字版架构</summary>
+主要示例是[群织 GroupWeave](examples/groupweave/README.md)：一个以 Koishi 插件和现有 DSH Agent
+为基础的多租户 Telegram 应用。成员使用受范围约束的代码功能，或明确确认后调用 AI；宿主应用负责
+身份、权限、存储、任务生命周期及 Telegram 结果交付。灵活的 AI 任务通过现有 Docker/OpenShell 路径执行。
 
 ```text
-                        TG / Web / API / CLI
-                                  ↓
-              宿主应用：身份、租户规则、权限、业务存储
-                                  ↓
-              ┌───────────────────┴───────────────────┐
-              ↓                                       ↓
-      已审核代码 / 插件                        Harness Bridge
-              │                                       ↓
-              │                              OpenShell · Docker
-              │                             全新沙箱：DSH + Skill
-              │                                       ↓
-              │                              执行证据、沙箱清理
-              │                                       │
-              └───────────────────┬───────────────────┘
-                                  ↓
-                    宿主复核结果、权限与接收范围
-                                  ↓
-                     回复 / API 结果 / 获准产物
+Telegram / 管理 Mini App
+              ↓
+GroupWeave：身份、群范围、确认、存储、结果交付
+        ┌─────┴─────────────────────────────┐
+        ↓                                   ↓
+Koishi / 已批准代码                Harness Bridge → OpenShell + Docker
+        │                                   ↓
+        │                             DSH Agent + Skill
+        └────────── 群/私聊范围内的文本、媒体与任务结果 ───────→
 ```
 
-</details>
+![Bridge 接入绑定与宿主职责](assets/current-architecture.zh-CN.svg)
 
-固定任务走已有代码，需要灵活判断的任务走隔离 Harness，两条路径都由宿主决定最终交付。
-接收端、存储、业务鉴权与代码插件由宿主提供；沙箱访问业务能力时，也必须在实际 CLI / API 边界校验权限。
-图中的结果复核发生在交付前，不能代替执行业务操作时的鉴权。
+图片展示的是更大应用流程中的接入库绑定，不包含 GroupWeave 的接收入口、产品策略或交付代码。
 
-[具体输入与输出](docs/input-output.md) · [图形版、隔离与时序](docs/architecture.md) · [复用与池方案](docs/reuse.md)
+## 仓库内容
 
-## 核心思想
+- [`examples/groupweave/`](examples/groupweave/README.md) 是完整应用案例，包含 Telegram/管理入口、Koishi 与 DSH
+  接入、存储、权限和结果交付。
+- [`createHarnessBridge(options).execute(request, signal?)`](index.mjs) 仍是可直接调用并带 TypeScript 声明的
+  JavaScript 库。它把可信宿主请求连接到每任务全新的 OpenShell Docker 沙箱和现有 DSH headless Harness。
+  这是具体接入绑定，不是通用运行时或独立的新产品方向。
+- [`examples/koishi/`](examples/koishi/README.md) 保留为精简、聚焦的宿主接入示例。
 
-大量 AI 应用可以围绕四类已有能力组织：
+GroupWeave 复用 Koishi、grammY、Fastify、React/Vite、DSH、OpenShell 及现有媒体、RSS、提醒和图片工具。
+接入库不拥有机器人、业务规则或工作流引擎。
 
-| 部分 | 负责什么 | 实际归属 |
-| --- | --- | --- |
-| 接收端 | 接收消息、API 或外部事件，确认请求来源。 | 宿主应用 / 现有适配器 |
-| 存储 | 保存配置、业务数据、任务历史和访问规则。 | 宿主应用 / 现有数据库 |
-| Harness | 加载普通 Skill，需要时推理，调用工具并返回结果。 | 新沙箱内的现有 DSH |
-| CLI / API 能力 | 执行真实操作，在实际数据与服务边界校验权限。 | 现有工具与服务 |
+## GroupWeave 当前状态
 
-Harness Bridge 先用一个小而明确的接入模块把这些职责连接起来。
-稳定、经过审核的操作沿用宿主代码路径；需要灵活判断的 Agent 任务交给隔离的 Harness。
-高频方法可以经过开发、审核和测试成为代码。目前没有自动把 Skill 编译成代码的系统。
+仓库中的完整源码和验收记录涵盖一个可工作的 Bot 案例，包括群聊与私聊范围、权限与确认、Echo、提醒、RSS、
+媒体与图片、Markdown 渲染，以及在 Docker 内执行的真实 AI 任务。2026-10-29 验收记录包含真实 `/brief`
+和引用 `/digest` 的执行及交付。这些收据只证明对应任务，不代表所有组合或生产级保证。详见
+[第十四批原生验收](examples/groupweave/docs/ACCEPTANCE-20261022-NATIVE.md)。
 
-未来可以在应用层接入 JEV 等决策模型，从已授权能力中选择动作。
-它是可选的应用策略，不是框架必须绑定的概念，也不是授权来源；当前接入库尚未实现它。
+已知缺口仍明确保留：匿名站点解析是尽力服务，部分远端样例会失败；Console 在线安装插件未实现；AI 沙箱文件
+产物回传未实现；多轮记忆和宽泛插件权限未实现。应用文档还列出未验证组合及部署限制。见其
+[TODO](examples/groupweave/docs/TODO.md)、[验收记录](examples/groupweave/docs/ACCEPTANCE-20261022-NATIVE.md)
+和[安全说明](SECURITY.md)。
 
-## 当前已经提供
+## 运行本地预览
 
-- `createHarnessBridge(options).execute(trustedRequest, signal?)` 及 TypeScript 类型声明。
-- 必需的宿主接纳、原生调用、结果释放鉴权回调。
-- 每任务创建新 OpenShell 沙箱，核对原生 ID、随机名称、workspace 和归属标签。
-- 可选上传普通 `SKILL.md`、宿主准备的 DSH patch；提示词通过 stdin 提交。
-- 命令时限、输出上限、取消，以及独立时限内的停止、删除和消失检查。
-- 分开记录执行与清理证据；清理不确定时阻止成功返回，不复用该实例。
-- 薄 Koishi 接入示例：真实框架命令分发、模拟消息、按会话范围取消、有时限的退出等待。
-
-当前绑定验证的是 **OpenShell CLI 0.1.3 的行为**与 **`@deepseek-ai/dsh@0.2.0-rc.2`**。
-其他版本或 Harness 需要单独适配与验收。本实现只保留 OpenShell + Docker 一条隔离路径。
-
-## 复用到哪一层？
-
-**当前已经有的路径：** 每个任务创建新的 Docker 沙箱，结束后进行有界清理。
-部署可以共享不可变镜像与依赖准备；接入库本身不管理缓存，也没有实测缓存命中或提速。
-可写工作区、Agent 会话和执行过的实例不跨任务共享。
-
-**尚未实现的优化方案：** 只有 OpenShell 原生能力与实测支持时，才考虑“预热未使用的干净容量 → 独占单次领取 → 执行 → 销毁 → 补充全新容量”。
-当前没有虚拟机后端、暖池或“用后擦除再派发”的池。
-[当前与提议方案的生命周期图及门槛](docs/reuse.md) 已单独说明。
-
-```text
-当前：共享不可变镜像与依赖准备 → 每任务创建全新沙箱 → 执行 → 清理
-提议：预热未使用容量 → 独占使用一次 → 销毁 → 补充全新容量（尚未实现）
-```
-
-## 先跑离线示例
-
-需要 **Node.js 24+**。包尚未发布到 npm。
+需要 Node.js 24+：
 
 ```sh
-git clone https://github.com/ailiheizi/harness-bridge.git
-cd harness-bridge
 npm ci --ignore-scripts
-npm test
 
-cd examples/koishi
-npm ci --ignore-scripts
-npm test
-npm run demo
+cd examples/groupweave
+npm ci
+npm run build
+APP_MODE=preview npm start
 ```
 
-这些检查通过假的原生 CLI 和真实 Koishi App / Session / MockBot 验证接入契约，
-不会启动 Docker、访问模型或发送真实 TG 消息。
+应用预览地址为 `http://127.0.0.1:4318`，使用预览身份，不需要 Telegram 凭据，也不会发起真实模型调用。
+根目录套件使用假的原生 CLI 检查接入契约；示例自身命令及证据见 GroupWeave README。真实 Telegram 部署需要
+独立凭据、HTTPS Mini App 来源和 Bot 配置。真实 AI 执行还需要已配置的 OpenShell gateway/driver 和可信 DSH/provider 配置。
 
-真实应用接入方式：
+单独使用接入库时，宿主提供自己的可信配置和回调：
 
 ```js
 import { createHarnessBridge } from '@actweave/harness-bridge';
-import trusted from './trusted-bridge-config.mjs';
 
-const bridge = createHarnessBridge(trusted.bridge);
-const result = await bridge.execute(trusted.task, trusted.abortSignal);
-
-if (result.status !== 'completed' || result.cleanup.status !== 'verified') {
-  await trusted.recordFailure(result);
-} else {
-  // 宿主在交付前再次校验计量、当前权限和接收范围。
-  await trusted.checkAndDeliver(result);
-}
+const bridge = createHarnessBridge(hostOwnedBridgeOptions);
+const result = await bridge.execute(hostOwnedTrustedRequest, signal);
+// 宿主在交付前重新核对当前权限与接收范围。
 ```
 
-`trusted` 由宿主应用实现，不是项目自带的服务。
-可以用本地 `file:` 依赖把源码中的接入库加入另一个包。
-[接入指南](docs/QUICKSTART.md) 列出了镜像、策略、patch、私有 CLI 配置和权限回调等前提。
+选项和结果类型见 [`index.d.ts`](index.d.ts)。GroupWeave 的完整适配器位于
+[`examples/groupweave/src/server/sandbox-ai.ts`](examples/groupweave/src/server/sandbox-ai.ts)。
 
-## 隔离与管理边界
+## 边界
 
-租户和操作者身份来自已认证的宿主状态，不能从提示词认领。
-业务 API 必须校验行、字段、资源和操作权限，接入库回调不能代替这些检查。
-只有经过批准的确定性代码放在可信宿主路径；生成代码与不可信代码在隔离工作负载内执行。
+宿主负责已认证身份、当前权限、持久化、容量、计量和交付。OpenShell 负责沙箱生命周期，DSH 负责 Harness
+行为。接入库提交一条固定原生命令，并返回有界文本及执行/清理证据；它不提供 Telegram API、任意 Shell、
+模型路由或沙箱文件产物。
 
-工作负载不应挂载宿主 HOME、业务数据或 Docker socket；模型凭据由原生可信配置管理。
-这些都是实际部署需要满足并验证的条件，导入一个库本身不能证明它们成立。
+当前实现只使用 OpenShell Docker 和 DSH headless。Harness 完成不证明模型计费、业务正确或用户已收到结果。
+通用库中的 `modelRequestCount` 保持未知。实际安全边界仍包括部署策略及宿主检查。详见[设计](docs/design.md)、
+[架构](docs/architecture.md)、[ADR](docs/adr/)和[验证记录](docs/validation.md)。
 
-`completed` 只证明预期 DSH 原生执行和接入库所检查的清理条件成立，
-不代表业务结果正确、用户已经收到、或者计费准确。
-`modelRequestCount` 始终是 `null`。
-目前原生 CLI 按名称删除，仍有已记录的名称重绑定窗口；清理通过也不等于全部上游角色和卷已清空。
-详见[安全说明](SECURITY.md)。
+## 文档
 
-## 当前证据与缺口
-
-| 检查 | 结果与范围 |
-| --- | --- |
-| 独立公开副本核心测试 | **46/46 PASS**；干净安装，假 CLI 与本地契约 |
-| Koishi 示例 | **17/17 PASS**；配置 **10/10**、取消契约 **3/3**，均为离线检查 |
-| 核心依赖审计 | 发布检查时 **0 个已知漏洞** |
-| Koishi 依赖审计 | 存在传递依赖 `file-type` 的中危公告，见[依赖说明](docs/DEPENDENCIES.md) |
-| 此前私有原生与真实模型实验 | 记录了 **3/3** 次固定合成输出往返；依赖私有准备，无法仅凭公开源码复现 |
-| 生产多用户授权、真实交付、硬预算与重启恢复 | 本预览尚未证明 |
-
-私有实验只提供背景，不能当作公开验收凭证。
-[验证记录](docs/validation.md) 区分各层证据，[路线图](docs/roadmap.md) 列出扩大部署前的验收门槛。
-
-## 文档与借鉴
-
-- [核心设计](docs/design.md)、[架构与生命周期](docs/architecture.md)、[决策理由 ADR](docs/adr/)
-- [具体输入与输出](docs/input-output.md)、[复用边界](docs/reuse.md)、[图稿构建](docs/diagrams.md)、[图标许可](THIRD_PARTY_NOTICES.md)
-- [接入指南](docs/QUICKSTART.md)、[Koishi 示例](examples/koishi/README.md)、[原生验收前提](docs/NATIVE-ACCEPTANCE.md)
-- [依赖与限制](docs/DEPENDENCIES.md)、[贡献指南](CONTRIBUTING.md)
-
-执行部分复用 [OpenShell](https://github.com/NVIDIA/OpenShell)、
-[DSH](https://github.com/deepseek-ai/deepseek-harness)、[Execa](https://github.com/sindresorhus/execa)，
-示例使用 [Koishi](https://github.com/koishijs/koishi)。
-Mermaid 图稿参考了 OpenShell 的可信边界表达、OpenHands 的总览与细节分图及源码维护、n8n 的执行数据流、NanoClaw 的宿主与 Agent 分工，以及 C4 的职责标注。
-[参考与差异](docs/references.md) 说明了具体借鉴范围，没有复制上游图像素材。
+- [GroupWeave 应用案例](examples/groupweave/README.md)
+- [精简 Koishi 接入示例](examples/koishi/README.md)
+- [设计](docs/design.md) · [架构](docs/architecture.md) · [路线图](docs/roadmap.md)
+- [接入库 Quickstart](docs/QUICKSTART.md)
+- [ADR](docs/adr/) · [安全](SECURITY.md) · [验证](docs/validation.md)
 
 [Apache-2.0](LICENSE)。

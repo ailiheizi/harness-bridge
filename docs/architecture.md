@@ -1,20 +1,36 @@
 # Architecture
 
-This preview has one concrete path: authenticated host application → bridge
-library → OpenShell CLI → fresh Docker sandbox → existing DSH headless Harness.
-Results return through the bridge to the host for its own policy, accounting,
-and delivery decisions.
+This repository presents a complete host case and its concrete execution
+binding. GroupWeave receives Telegram and management requests, applies its own
+identity, group scope, confirmation and storage rules, then selects approved
+Koishi code or an AI task through the existing bridge library:
+
+```text
+Telegram / management Mini App
+              ↓
+GroupWeave: identity, group scope, confirmation, storage
+        ┌─────┴────────────────────────────┐
+        ↓                                  ↓
+Koishi / approved code            Bridge → OpenShell + Docker → DSH
+        └──────── scoped outputs → GroupWeave authorization and delivery
+```
+
+The library remains directly callable without GroupWeave. It connects a
+trusted host request to OpenShell CLI, a fresh Docker sandbox and the existing
+DSH headless Harness. Results return as bounded text and evidence; sandbox file
+artifact return is not implemented.
 
 ## Current implementation
 
 ![Current implementation and host responsibilities](../assets/current-architecture.svg)
 
-This is the current binding's call flow. Gray nodes are capabilities the host
-must provide; blue nodes are implemented bridge behavior; green nodes reuse
-OpenShell and DSH. Path selection belongs to the host. The library does not
-implement a receiver, a code/plugin dispatcher, business storage or automatic
-code-versus-Agent routing. The Koishi consumer is an optional command example,
-not evidence of production Telegram delivery.
+This figure details the bridge binding, not the full GroupWeave application.
+Gray nodes are capabilities the host must provide; blue nodes are implemented
+bridge behavior; green nodes reuse OpenShell and DSH. GroupWeave implements its
+own Telegram receiver, code/AI selection, business storage and delivery. The
+library does not implement those host responsibilities. The [application
+acceptance record](../examples/groupweave/docs/ACCEPTANCE-20261022-NATIVE.md)
+contains the scoped Telegram and AI delivery evidence.
 
 The main Agent path assumes an admitted task. Admission denial avoids sandbox
 creation; uncertain cleanup cannot produce a successful bridge result.
@@ -31,16 +47,16 @@ deployment prerequisites. It shows no warm pool or used-instance reuse.
 
 ![System overview](../assets/architecture.svg)
 
-The bridge is a library inside the trusted application process. OpenShell and
-DSH are reused systems, not bridge-owned runtimes. The host keeps persistence,
-business policy and delivery. The overview shows the main call and result
-paths; it is not a physical deployment topology.
+The bridge is a library inside the trusted GroupWeave application process.
+OpenShell and DSH are reused systems, not bridge-owned runtimes. GroupWeave
+keeps persistence, business policy and delivery. The overview shows the main
+call and result paths; it is not a physical deployment topology.
 
-The numbered overview follows a flexible Agent task. Telegram/HTTP/event
-entrypoints and final delivery belong to the host; the bridge does not ship
+The numbered overview follows a flexible Agent task. Telegram and management
+entrypoints and final delivery belong to GroupWeave; the bridge does not ship
 an HTTP server or a natural-language Telegram router. The colored bands show
 flow stages, not trust boundaries. Only approved success reaches the depicted
-summary reply; failed or blocked results must not be delivered as success.
+reply; failed or blocked results must not be delivered as success.
 
 [Mermaid source](../assets/architecture.mmd) · [Concrete input/output example](input-output.md)
 

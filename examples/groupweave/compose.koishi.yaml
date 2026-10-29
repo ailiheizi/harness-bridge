@@ -1,0 +1,41 @@
+# Native Koishi receiver; do not combine with compose.telegram.yaml or run
+# another instance of the same bot token.
+# docker compose --env-file .env.local -f compose.yaml -f compose.koishi.yaml up -d --build
+services:
+  groupweave:
+    build:
+      args:
+        ENABLE_MEDIA_RUNTIME: "${ENABLE_MEDIA:-0}"
+        ENABLE_RENDER_RUNTIME: "${ENABLE_RENDER:-0}"
+        ENABLE_SITE_PARSER_RUNTIME: "${ENABLE_SITE_PARSER:-0}"
+    command: ["npm", "run", "start:koishi"]
+    environment:
+      NODE_USE_ENV_PROXY: "${NODE_USE_ENV_PROXY:-0}"
+      HTTP_PROXY: "${HTTP_PROXY:-}"
+      HTTPS_PROXY: "${HTTPS_PROXY:-}"
+      NO_PROXY: "${NO_PROXY:-}"
+      ENABLE_TELEGRAM: "${ENABLE_TELEGRAM:-0}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      TELEGRAM_ADMIN_IDS: "${TELEGRAM_ADMIN_IDS:-}"
+      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:?Set the exact HTTPS origin for the management API}"
+      ENABLE_AI: "${ENABLE_AI:-0}"
+      ENABLE_MEDIA: "${ENABLE_MEDIA:-0}"
+      FFMPEG_PATH: /usr/bin/ffmpeg
+      FFPROBE_PATH: /usr/bin/ffprobe
+      ENABLE_RENDER: "${ENABLE_RENDER:-0}"
+      RENDER_BROWSER_PATH: /usr/bin/chromium
+      # Chromium's cache/crash reports must stay in the writable tmpfs. Keep
+      # HOME unchanged for explicitly configured OpenSSH/Harness bindings.
+      XDG_CONFIG_HOME: /tmp/groupweave-config
+      XDG_CACHE_HOME: /tmp/groupweave-cache
+      SITE_PARSER_API_URL: "${SITE_PARSER_API_URL:-}"
+      SITE_PARSER_API_KEY: "${SITE_PARSER_API_KEY:-}"
+      ENABLE_SITE_PARSER: "${ENABLE_SITE_PARSER:-0}"
+      SITE_PARSER_YTDLP_PATH: /opt/site-parser/bin/yt-dlp
+      # Cookie files are optional. Mount a protected file read-only separately;
+      # these values are paths inside the app container, never Cookie contents.
+      BILIBILI_COOKIES_FILE: "${BILIBILI_COOKIES_FILE:-}"
+      DOUYIN_COOKIES_FILE: "${DOUYIN_COOKIES_FILE:-}"
+      SANDBOX_AI_BINDING_MODULE: "${SANDBOX_AI_BINDING_MODULE:-}"
+      MAX_ACTIVE_TASKS: "${MAX_ACTIVE_TASKS:-2}"
+      TZ: "${TZ:-Asia/Shanghai}"

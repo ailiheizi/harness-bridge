@@ -1,4 +1,20 @@
-# Diagram icon notices
+# Third-party notices
+
+## Application integrations
+
+The complete GroupWeave example reuses published Koishi, grammY, Fastify,
+DSH, React/Vite, Sharp, pdf-lib, FFmpeg and rendering/RSS/schedule integrations.
+Its lockfile records package versions; installed upstream packages retain
+their own licenses. Repository code does not replace those upstream terms.
+The example's `patches/README.md` records the small versioned compatibility
+patches. OpenShell and DSH remain external projects with their own licenses.
+
+The optional legacy antiad classifier implementation and production models are
+not included in the public case. Its adapter guide describes the separately
+supplied implementation requirement; no redistribution license for the private
+legacy modules is asserted.
+
+## Diagram icons
 
 The generated documentation diagrams embed paths from these pinned icon sets:
 

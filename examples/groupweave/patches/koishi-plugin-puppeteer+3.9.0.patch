@@ -1,0 +1,56 @@
+diff --git a/node_modules/koishi-plugin-puppeteer/lib/index.js b/node_modules/koishi-plugin-puppeteer/lib/index.js
+index 0887d69..8776cbd 100644
+--- a/node_modules/koishi-plugin-puppeteer/lib/index.js
++++ b/node_modules/koishi-plugin-puppeteer/lib/index.js
+@@ -305,8 +305,21 @@ var canvas_default = class extends import_canvas.default {
+     }
+   }
+   async stop() {
+-    await this.page?.close();
+-    this.page = null;
++    const page = this.page;
++    if (!page) return;
++    if (page.isClosed()) {
++      this.page = null;
++      return;
++    }
++    try {
++      await page.close();
++      this.page = null;
++    } catch (error) {
++      const browser = page.browser();
++      const targetGone = page.isClosed() || !browser?.connected || !browser.targets().includes(page.target());
++      if (!targetGone) throw error;
++      this.page = null;
++    }
+   }
+   async createCanvas(width, height) {
+     try {
+diff --git a/node_modules/koishi-plugin-puppeteer/src/canvas.ts b/node_modules/koishi-plugin-puppeteer/src/canvas.ts
+index ab60d8e..4881949 100644
+--- a/node_modules/koishi-plugin-puppeteer/src/canvas.ts
++++ b/node_modules/koishi-plugin-puppeteer/src/canvas.ts
+@@ -148,8 +148,21 @@ export default class extends CanvasService {
+   }
+ 
+   async stop() {
+-    await this.page?.close()
+-    this.page = null
++    const page = this.page
++    if (!page) return
++    if (page.isClosed()) {
++      this.page = null
++      return
++    }
++    try {
++      await page.close()
++      this.page = null
++    } catch (error) {
++      const browser = page.browser()
++      const targetGone = page.isClosed() || !browser?.connected || !browser.targets().includes(page.target())
++      if (!targetGone) throw error
++      this.page = null
++    }
+   }
+ 
+   async createCanvas(width: number, height: number) {

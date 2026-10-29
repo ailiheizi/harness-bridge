@@ -1,0 +1,272 @@
+diff --git a/node_modules/koishi-plugin-video-to-gif/lib/index.js b/node_modules/koishi-plugin-video-to-gif/lib/index.js
+index 608d235..f24893b 100644
+--- a/node_modules/koishi-plugin-video-to-gif/lib/index.js
++++ b/node_modules/koishi-plugin-video-to-gif/lib/index.js
+@@ -52,7 +52,7 @@ function getVideoExtension(url) {
+ function isValidUrl(string) {
+     try {
+         const url = new URL(string);
+-        return ['http:', 'https:'].includes(url.protocol);
++        return ['http:', 'https:'].includes(url.protocol) || /^data:video\/[\w.+-]+;base64,/i.test(string);
+     }
+     catch {
+         return false;
+@@ -151,13 +151,44 @@ function apply(ctx, config) {
+     // 从 ffmpeg 服务获取可执行文件路径
+     const ffmpegExe = ctx.ffmpeg.executable;
+     fluent_ffmpeg_1.default.setFfmpegPath(ffmpegExe);
++    const activeJobs = new Map();
++    const jobKey = (session) => `${session.platform}:${session.bot?.selfId || ''}:${session.cid}:${session.userId}`;
++    const throwIfAborted = (signal) => {
++        if (signal.aborted) {
++            const error = new Error('视频任务已停止');
++            error.name = 'AbortError';
++            throw error;
++        }
++    };
++    const waitWithSignal = (promise, signal) => new Promise((resolve, reject) => {
++        if (signal.aborted) {
++            reject(Object.assign(new Error('视频任务已停止'), { name: 'AbortError' }));
++            return;
++        }
++        const abort = () => finish(reject, Object.assign(new Error('视频任务已停止'), { name: 'AbortError' }));
++        let settled = false;
++        const finish = (callback, value) => {
++            if (settled) return;
++            settled = true;
++            signal.removeEventListener('abort', abort);
++            callback(value);
++        };
++        signal.addEventListener('abort', abort, { once: true });
++        Promise.resolve(promise).then(value => finish(resolve, value), error => finish(reject, error));
++    });
+     // 用 ffmpeg -i 获取视频时长（不依赖 ffprobe）
+-    function getVideoDuration(input) {
++    function getVideoDuration(input, job) {
+         return new Promise((resolve, reject) => {
+             const child = (0, child_process_1.spawn)(ffmpegExe, ['-i', input]);
++            job.stop = () => child.kill('SIGKILL');
+             let stderr = '';
+             child.stderr.on('data', (data) => { stderr += data.toString(); });
+             child.on('close', () => {
++                job.stop = undefined;
++                if (job.controller.signal.aborted) {
++                    reject(Object.assign(new Error('视频任务已停止'), { name: 'AbortError' }));
++                    return;
++                }
+                 const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.?\d*)/);
+                 if (match) {
+                     resolve(parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseFloat(match[3]));
+@@ -166,7 +197,7 @@ function apply(ctx, config) {
+                     reject(new Error('无法解析视频时长'));
+                 }
+             });
+-            child.on('error', reject);
++            child.on('error', error => { job.stop = undefined; reject(error); });
+         });
+     }
+     async function extractVideoFromForward(session, forwardId, depth = 0) {
+@@ -302,10 +333,37 @@ function apply(ctx, config) {
+         }
+         return undefined;
+     }
++    ctx.command('cancelv2g', '取消视频转 GIF')
++        .action(({ session }) => {
++        if (!session)
++            return;
++        const key = jobKey(session);
++        const job = activeJobs.get(key);
++        if (!job || job.controller.signal.aborted)
++            return '当前没有正在运行的视频转 GIF 任务。';
++        job.reason = 'cancelled';
++        job.controller.abort();
++        return job.uploadStarted
++            ? '已请求取消；如果 GIF 已开始上传，它仍可能到达。'
++            : '已取消视频转 GIF。';
++    });
+     ctx.command('v2g [video:text]', '视频转GIF')
+         .action(async ({ session }, video) => {
+         if (!session)
+             return;
++        const key = jobKey(session);
++        if (activeJobs.has(key))
++            return '当前已有视频转 GIF 任务，请先等待或使用 /cancelv2g。';
++        const job = { controller: new AbortController(), stop: undefined, uploadStarted: false, reason: undefined };
++        activeJobs.set(key, job);
++        const deadline = setTimeout(() => {
++            if (!job.controller.signal.aborted) {
++                job.reason = 'timeout';
++                job.controller.abort();
++            }
++        }, 60000);
++        job.controller.signal.addEventListener('abort', () => job.stop?.(), { once: true });
++        try {
+         let targetElement;
+         debugLog(`处理指令`);
+         if (session.quote) {
+@@ -346,11 +404,12 @@ function apply(ctx, config) {
+         }
+         if (!targetElement) {
+             const timeoutSec = config.timeout / 1000;
+-            await session.send(`请在 ${timeoutSec} 秒内发送视频...`);
+-            targetElement = await new Promise(resolve => {
++            await waitWithSignal(session.send(`请在 ${timeoutSec} 秒内发送视频...`), job.controller.signal);
++            targetElement = await new Promise((resolve, reject) => {
+                 let resolved = false;
++                let timer;
+                 const dispose = ctx.middleware((s, next) => {
+-                    if (s.cid !== s.cid || s.userId !== s.userId)
++                    if (s.cid !== session.cid || s.userId !== session.userId)
+                         return next();
+                     if (s.author?.id === session.bot.selfId)
+                         return next();
+@@ -358,49 +417,98 @@ function apply(ctx, config) {
+                     if (el) {
+                         resolved = true;
+                         dispose();
++                        clearTimeout(timer);
++                        job.controller.signal.removeEventListener('abort', onAbort);
+                         resolve(el);
+                         return;
+                     }
+                     return next();
+                 }, true);
+-                setTimeout(() => {
++                const onAbort = () => {
++                    if (resolved) return;
++                    resolved = true;
++                    dispose();
++                    clearTimeout(timer);
++                    resolve(undefined);
++                };
++                job.controller.signal.addEventListener('abort', onAbort, { once: true });
++                timer = setTimeout(() => {
+                     if (!resolved) {
++                        resolved = true;
+                         dispose();
+-                        session.send('超时。');
++                        job.controller.signal.removeEventListener('abort', onAbort);
++                        void session.send('超时。');
+                         resolve(undefined);
+                     }
+                 }, config.timeout);
+             });
+         }
++        throwIfAborted(job.controller.signal);
+         if (!targetElement)
+             return '未找到视频。';
+         const videoUrl = await resolveVideoUrl(session, targetElement);
++        throwIfAborted(job.controller.signal);
+         if (!videoUrl)
+             return '无法获取视频链接。';
++        let input;
++        let output;
+         try {
+-            await session.send('处理中...');
++            await waitWithSignal(session.send('处理中...'), job.controller.signal);
+             const ext = getVideoExtension(videoUrl);
+-            const input = getTempPath(ext);
+-            const output = getTempPath('.gif');
+-            const buffer = await ctx.http.get(videoUrl, { responseType: 'arraybuffer' });
+-            const buf = Buffer.from(buffer);
++            input = getTempPath(ext);
++            output = getTempPath('.gif');
++            let buf;
++            if (videoUrl.startsWith('data:')) {
++                const match = /^data:(video\/[\w.+-]+);base64,([A-Za-z0-9+/]*={0,2})$/i.exec(videoUrl);
++                if (!match)
++                    return '不支持此视频格式。';
++                const encoded = match[2];
++                const decodedSize = Math.floor(encoded.length * 3 / 4) - (encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0);
++                if (config.maxSize > 0 && decodedSize > config.maxSize * 1024 * 1024)
++                    return `视频过大 (> ${config.maxSize}MB)`;
++                const file = await ctx.http.file(videoUrl);
++                throwIfAborted(job.controller.signal);
++                buf = Buffer.from(file.data);
++            }
++            else {
++                const downloaded = await waitWithSignal(ctx.http.get(videoUrl, {
++                    responseType: 'arraybuffer', timeout: 55000, signal: job.controller.signal
++                }), job.controller.signal);
++                buf = Buffer.from(downloaded);
++            }
++            throwIfAborted(job.controller.signal);
+             if (config.maxSize > 0 && buf.length > config.maxSize * 1024 * 1024)
+                 return `视频过大 (> ${config.maxSize}MB)`;
+             await fs_1.default.promises.writeFile(input, buf);
++            throwIfAborted(job.controller.signal);
+             if (config.maxDuration > 0) {
+-                const dur = await getVideoDuration(input);
++                const dur = await waitWithSignal(getVideoDuration(input, job), job.controller.signal);
+                 if (dur > config.maxDuration)
+                     throw new Error(`时长超限 (${dur.toFixed(1)}s)`);
+             }
+             let vf = `fps=${config.fps}`;
+             if (config.width > 0)
+                 vf += `,scale=${config.width}:-1:flags=lanczos`;
+-            await new Promise((resolve, reject) => {
+-                (0, fluent_ffmpeg_1.default)(input).outputOption('-vf', vf).toFormat('gif')
+-                    .on('end', () => resolve()).on('error', (err) => reject(err)).save(output);
++            const command = (0, fluent_ffmpeg_1.default)(input).outputOption('-vf', vf).toFormat('gif');
++            const ffmpegPromise = new Promise((resolve, reject) => {
++                command.on('end', () => resolve()).on('error', (err) => reject(err));
++            });
++            command.on('start', () => {
++                job.stop = () => command.kill('SIGKILL');
++                if (job.controller.signal.aborted)
++                    job.stop();
+             });
++            command.save(output);
++            job.stop = () => command.kill('SIGKILL');
++            if (job.controller.signal.aborted)
++                job.stop();
++            await waitWithSignal(ffmpegPromise, job.controller.signal);
++            job.stop = undefined;
++            throwIfAborted(job.controller.signal);
+             const gif = await fs_1.default.promises.readFile(output);
+-            await session.send(koishi_1.h.image(gif, 'image/gif'));
++            throwIfAborted(job.controller.signal);
++            job.uploadStarted = true;
++            await waitWithSignal(session.send(koishi_1.h.image(gif, 'image/gif')), job.controller.signal);
+             try {
+                 fs_1.default.unlinkSync(input);
+             }
+@@ -411,8 +519,36 @@ function apply(ctx, config) {
+             catch { }
+         }
+         catch (e) {
+-            logger.error(e);
+-            return `错误: ${e.message}`;
++            if (job.controller.signal.aborted) {
++                if (job.reason === 'timeout') return job.uploadStarted
++                    ? '处理超过 60 秒，已停止等待上传；GIF 已开始上传，仍可能到达。'
++                    : '视频处理超过 60 秒，已停止。';
++                return '';
++            }
++            logger.warn('视频转 GIF 失败');
++            return '视频处理失败，请检查视频后重试。';
++        }
++        finally {
++            for (const temp of [input, output]) {
++                if (temp) {
++                    try { fs_1.default.unlinkSync(temp); }
++                    catch { }
++                }
++            }
++        }
++        } catch (error) {
++            if (job.controller.signal.aborted) {
++                if (job.reason === 'timeout') return job.uploadStarted
++                    ? '处理超过 60 秒，已停止等待上传；GIF 已开始上传，仍可能到达。'
++                    : '视频处理超过 60 秒，已停止。';
++                return '';
++            }
++            logger.warn('视频转 GIF 失败');
++            return '视频处理失败，请检查视频后重试。';
++        } finally {
++            clearTimeout(deadline);
++            job.stop = undefined;
++            if (activeJobs.get(key) === job) activeJobs.delete(key);
+         }
+     });
+ }

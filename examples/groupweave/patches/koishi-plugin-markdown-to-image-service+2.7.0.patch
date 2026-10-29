@@ -1,0 +1,65 @@
+diff --git a/node_modules/koishi-plugin-markdown-to-image-service/lib/index.js b/node_modules/koishi-plugin-markdown-to-image-service/lib/index.js
+index b1b9a4e..2b2049a 100644
+--- a/node_modules/koishi-plugin-markdown-to-image-service/lib/index.js
++++ b/node_modules/koishi-plugin-markdown-to-image-service/lib/index.js
+@@ -5365,7 +5365,7 @@ ${kind}${heading}`;
+ __name(useContainer, "useContainer");
+ function createMarkdown(opts = {}) {
+   const md = new import_markdown_it.default({
+-    html: true,
++    html: false,
+     linkify: true,
+     breaks: true,
+     typographer: false,
+@@ -6027,7 +6027,7 @@ window.mermaid.initialize({
+       const c = scheme(258, theme.pageTheme === "dark");
+       return { darkMode: theme.pageTheme === "dark", fontFamily: FONT_STACK, primaryColor: c.primaryContainer, primaryTextColor: c.onPrimaryContainer, primaryBorderColor: c.outline, lineColor: c.onSurfaceVariant, secondaryColor: c.secondaryContainer, tertiaryColor: c.tertiaryContainer, background: c.surface, mainBkg: c.surfaceContainer, nodeTextColor: c.onSurface, textColor: c.onSurface, edgeLabelBackground: c.surface };
+     })())},
+-  securityLevel: 'loose',
++  securityLevel: 'strict',
+   flowchart: { useMaxWidth: true },
+ });
+ </script>` : "";
+@@ -6058,7 +6058,21 @@ ${mermaidBlock}
+     const { html, hasMermaid } = renderMarkdown(this.md, markdownText);
+     const fullHtml = this.buildHtml(html, hasMermaid);
+     const page = await this.ctx.puppeteer.page();
++    const deadline = setTimeout(() => {
++      void page.close().catch(() => void 0);
++    }, 3e4);
++    deadline.unref?.();
+     try {
++      await page.setRequestInterception(true);
++      page.on("request", (request) => {
++        let allowed = false;
++        try {
++          const protocol = new URL(request.url()).protocol;
++          allowed = protocol === "about:" || protocol === "data:" || protocol === "blob:";
++        } catch {
++        }
++        void (allowed ? request.continue() : request.abort()).catch(() => void 0);
++      });
+       const viewport = { width: cfg.width, height: 800, deviceScaleFactor: cfg.deviceScaleFactor };
+       await page.setViewport(viewport);
+       await page.emulateMediaFeatures([
+@@ -6075,6 +6089,10 @@ ${mermaidBlock}
+         await this.runMermaid(page);
+         await page.evaluate(() => new Promise((r) => setTimeout(r, 30)));
+       }
++      const renderedHeight = await page.evaluate(
++        () => Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0)
++      );
++      if (renderedHeight > 8e3) throw new Error("Markdown render exceeds maximum height");
+       let currentWidth = cfg.width;
+       const maxWidth = Math.max(cfg.width, cfg.maxWidth);
+       for (let i = 0; i < 6; i++) {
+@@ -6104,7 +6122,8 @@ ${mermaidBlock}
+       this.ctx.logger("markdown-to-image").error("Markdown 转图片失败:", error);
+       throw error;
+     } finally {
+-      await page.close();
++      clearTimeout(deadline);
++      await page.close().catch(() => void 0);
+     }
+   }
+   async runMermaid(page) {

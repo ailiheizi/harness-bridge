@@ -1,0 +1,13 @@
+# Opt-in override. Supply a protected .env.telegram file, never commit credentials.
+# docker compose --env-file .env.telegram -f compose.yaml -f compose.telegram.yaml up -d --build
+services:
+  groupweave:
+    environment:
+      APP_MODE: "telegram"
+      ALLOW_LOCAL_PREVIEW: "0"
+      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:?Set the exact HTTPS origin}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:?Set the app Bot Token}"
+      TELEGRAM_ADMIN_IDS: "${TELEGRAM_ADMIN_IDS:?Set independent platform user IDs}"
+      ENABLE_AI: "${ENABLE_AI:-0}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      MAX_ACTIVE_TASKS: "${MAX_ACTIVE_TASKS:-2}"

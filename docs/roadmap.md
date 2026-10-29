@@ -1,50 +1,61 @@
 # Roadmap
 
-This roadmap is intentionally evidence-led. It does not promise dates or
-general Harness support.
+This roadmap follows the current repository direction: complete and maintain
+the GroupWeave Bot case in this repository, while keeping the bridge API
+callable for hosts that use the same native contracts. It does not propose a
+new package, protocol, or separate framework project.
 
-## Preview scope
+## Current scope
 
-- Keep the OpenShell Docker and DSH headless binding small and tied to their
-  pinned native contracts.
-- Publish the host integration boundary, synthetic examples, and truthful
-  validation notes.
-- The independent publication copy passes its local clean-install, contract
-  checks and package preview. Preserve these checks in CI. See
-  [validation](validation.md) for environment and scope.
+- GroupWeave is the full application example, with its source in
+  [`examples/groupweave/`](../examples/groupweave/README.md). Its own acceptance
+  record distinguishes delivered features, observed outcomes, and limits.
+- `createHarnessBridge(options).execute(...)` remains a small JavaScript
+  library for the pinned OpenShell Docker + DSH headless binding.
+- [`examples/koishi/`](../examples/koishi/README.md) remains a minimal,
+  focused adapter for the host/library seam.
+- Reuse upstream OpenShell and DSH behavior. Do not extract more packages or
+  add an Agent loop, workflow engine, provider router, tool registry, durable
+  queue, scheduler, task store, or second isolation backend.
+
+## GroupWeave's known remaining features
+
+The application record identifies actual product gaps rather than treating
+every untested combination as a feature request:
+
+- Console online plugin installation and a complete dependency interface are
+  not delivered.
+- AI sandbox file artifact return is not delivered; the library currently
+  returns bounded text and evidence only.
+- Multi-turn AI memory and broad plugin permissions are not delivered.
+- Anonymous site parsing is best-effort. Remote failures remain visible and
+  are not described as successful extraction.
+
+See GroupWeave's [TODO](../examples/groupweave/docs/TODO.md) and
+[fourteenth acceptance batch](../examples/groupweave/docs/ACCEPTANCE-20261022-NATIVE.md)
+for current feature evidence and the limits on real Telegram/provider claims.
 
 ## Before broader deployment claims
 
-- Keep package and example checks green in clean-checkout CI; validate the
-  minimum Node.js version and each supported operating system separately.
-- Validate against the exact target image, OpenShell CLI, policy, DSH patch,
-  and deployment paths a consumer intends to use.
-- For applications that require model budgets, wire a trusted pre-request
-  budget and task/sandbox-bound usage receipt outside this library.
-- Validate real host identity, current-permission checks, result audience,
-  delivery, persistence, and restart recovery within the consumer application.
-- Independently verify controller-owned roles, volumes, and other external
-  resources after native acceptance.
+- Validate the exact OpenShell CLI, DSH image and patch, native policy and
+  deployment paths used by a consumer.
+- Keep host identity, current permissions, audience, storage, cancellation and
+  recovery responsibilities in the host application.
+- For a consumer requiring hard model budgets, use an external trusted
+  pre-request gate and task/sandbox-bound usage receipt.
+- Do not infer provider cost, business correctness, delivery or complete
+  isolation from a completed native turn or representative integration path.
 
-## Capacity optimization research
+## Capacity and extension boundary
 
-- The current bridge creates and deletes one fresh Docker-backed OpenShell
-  sandbox per task. Existing image-layer or dependency caching may be shared
-  by the deployment, but the bridge has not measured or claimed a performance
-  benefit from it.
-- Do not add instance pooling, VM isolation, or a local capacity service.
-  Consider only an OpenShell-native, unused clean capacity unit leased once,
-  run once, destroyed, then replenished, and only after native lifecycle
-  evidence and a representative benchmark. A used or uncertain instance must
-  not be wiped and returned to dispatch; pause is not reset.
-- The host application owns concurrency, admission, and capacity accounting.
-  See [reuse boundary](reuse.md) and [ADR 0006](adr/0006-clean-capacity-reuse.md).
+The bridge creates a fresh Docker-backed OpenShell sandbox for each task and
+performs bounded cleanup. Deployment-side immutable image/dependency reuse may
+be possible but is not a bridge-managed cache or measured performance claim.
+ADR 0006 remains a proposed optimization only; no warm pool or used-instance
+reuse is implemented.
 
-## Expansion rule
-
-Do not add another isolation backend, Harness loop, provider router, tool
-registry, permission protocol, queue, scheduler, or durable task store to make
-the project appear more general. Add a concrete target binding only when an
-actual consumer contract shows what must be adapted and the new boundary can
-be validated. A second language or platform binding needs its own demonstrated
-consumer and review of the maintenance and security consequences.
+Do not add another isolation backend, Harness loop, permission protocol,
+provider router, or generic framework layer to make the repository appear
+more general. Work on the existing Bot case or bind a demonstrated consumer
+need to the existing native contracts, documenting a real capability gap when
+the target does not support it.

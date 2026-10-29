@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env*
+!.env.example
+!.env.koishi.example
+data/
+*.sqlite*
+artifacts/

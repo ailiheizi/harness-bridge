@@ -1,0 +1,28 @@
+diff --git a/node_modules/koishi-plugin-rss/lib/index.js b/node_modules/koishi-plugin-rss/lib/index.js
+index af2eca0..b04396c 100644
+--- a/node_modules/koishi-plugin-rss/lib/index.js
++++ b/node_modules/koishi-plugin-rss/lib/index.js
+@@ -83,9 +83,20 @@ function apply(ctx, config) {
+     const source = payload.meta.link;
+     if (!feedMap[source])
+       return;
+-    const message = `${payload.meta.title} (${payload.author})
+-${payload.title}`;
+-    await ctx.broadcast([...feedMap[source]], message);
++    const author = typeof payload.author === "string" && payload.author.trim() ? ` (${payload.author})` : "";
++    let itemLink = "";
++    if (typeof payload.link === "string") {
++      try {
++        const parsed = new URL(payload.link);
++        if ((parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.hostname && !parsed.username && !parsed.password) {
++          itemLink = parsed.href;
++        }
++      } catch {
++      }
++    }
++    const message = `${payload.meta.title}${author}
++${payload.title}${itemLink ? `\n${itemLink}` : ""}`;
++    await ctx.broadcast([...feedMap[source]], import_koishi.h.text(message));
+   });
+   ctx.on("ready", async () => {
+     const channels = await ctx.database.getAssignedChannels(["platform", "id", "rss"]);

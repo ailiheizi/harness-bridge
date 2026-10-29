@@ -1,0 +1,29 @@
+diff --git a/node_modules/rss-feed-emitter/src/FeedEmitter.js b/node_modules/rss-feed-emitter/src/FeedEmitter.js
+index eaa3076..b8d3992 100644
+--- a/node_modules/rss-feed-emitter/src/FeedEmitter.js
++++ b/node_modules/rss-feed-emitter/src/FeedEmitter.js
+@@ -186,6 +186,8 @@ class FeedEmitter extends EventEmitter {
+    */
+   destroy() {
+     this.feedList.forEach((feed) => feed.destroy());
++    Object.values(this.emittedUrlsPerEvent).forEach(({ timeout }) => clearTimeout(timeout));
++    this.emittedUrlsPerEvent = {};
+     delete this.feedList;
+     this.feedList = [];
+   }
+diff --git a/node_modules/rss-feed-emitter/src/FeedManager.js b/node_modules/rss-feed-emitter/src/FeedManager.js
+index 4af2a46..f7d44c4 100644
+--- a/node_modules/rss-feed-emitter/src/FeedManager.js
++++ b/node_modules/rss-feed-emitter/src/FeedManager.js
+@@ -120,8 +120,10 @@ class FeedManager {
+     this.populateNewItemsInFeed(data, innerFirst);
+     if (firstload && !this.instance.skipFirstLoad) {
+       this.instance.emit(`initial-load:${this.feed.url}`, { url: this.feed.url, items: this.feed.items });
+-      this.feed.failedFirstLoad = false;
+     }
++    // A successful first load must end first-load suppression even when old
++    // items are intentionally skipped; future polls must emit new entries.
++    this.feed.failedFirstLoad = false;
+   }
+ }
+ 

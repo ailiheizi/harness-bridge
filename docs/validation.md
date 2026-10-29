@@ -5,6 +5,34 @@ private target. This preview is source version `0.1.6-preview.1`; the core
 bridge implementation was carried forward unchanged from the `0.1.5` source.
 That statement is source lineage, not a new live acceptance result.
 
+## Complete Bot case publication, 2026-10-29
+
+`examples/groupweave/` contains the existing application case, its ordinary
+Koishi configuration, dependency patches, Docker/Compose deployment and scoped
+historical acceptance notes. This publication changes the checkout and image
+packaging, not the bridge runtime or upstream plugin implementations.
+
+For this packaging change, root/example dependency installation, the example's
+TypeScript/Vite build, the local Bridge import and Compose context resolution
+passed. The native Koishi entry then started from the published checkout:
+health reported `ok` and `koishiConfigured`, and the built page returned HTTP
+200. Telegram and AI were disabled for that startup check; it made no model
+request and the temporary process was stopped afterward.
+
+The local Docker rebuild did not complete: Docker Hub token requests were
+reset before application build, and the official image cache download was
+stopped after remaining slow. Compose configuration and Docker paths were
+reviewed, but this is not a successful new Docker image build receipt. Prior
+deployment evidence does not turn this unfinished rebuild into a pass.
+
+No upstream plugin matrix, full application suite, new model call, or
+new Telegram acceptance run was required. Existing real task results are
+described in the example's acceptance history; private raw receipts are omitted.
+
+Verification follows root `AGENTS.md` and the example's ADR-039. Unexercised
+combinations are coverage limits, not automatic new delivery tasks. The small
+`examples/koishi` below is distinct from the complete application case.
+
 ## Reproducible from this repository
 
 `npm test` runs the package's node:test suite against a fake native CLI. It

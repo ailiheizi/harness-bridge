@@ -1,0 +1,18 @@
+# Optional override for the same bot service, not another running container.
+# Set ANTIAD_MODEL_FILE to an administrator-reviewed host file; never user upload.
+services:
+  groupweave:
+    build:
+      args:
+        ENABLE_ANTIAD_RUNTIME: "1"
+    environment:
+      ENABLE_ANTIAD: "1"
+      ANTIAD_PYTHON_PATH: "/opt/antiad-venv/bin/python"
+      ANTIAD_MODEL_PATH: "/models/approved-baseline.joblib"
+    volumes:
+      - type: bind
+        source: "${ANTIAD_MODEL_FILE:?Set an administrator-reviewed baseline model file}"
+        target: /models/approved-baseline.joblib
+        read_only: true
+        bind:
+          create_host_path: false

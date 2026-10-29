@@ -1,0 +1,18 @@
+# Opt-in Chromium user-namespace sandbox support for Markdown rendering.
+# Include after compose.yaml and compose.koishi.yaml only when enabling /mdimg.
+services:
+  groupweave:
+    build:
+      args:
+        ENABLE_RENDER_RUNTIME: "1"
+    environment:
+      ENABLE_RENDER: "1"
+    # Chromium's browser and renderer threads briefly exceed the native
+    # receiver's 128 PID budget. Keep that default unchanged unless rendering
+    # is explicitly enabled.
+    pids_limit: 256
+    # The native Bot plus code/KaTeX/Mermaid rendering exceeds the 512 MiB
+    # default in the deployed receiver; keep this increase render-only.
+    mem_limit: 768m
+    security_opt:
+      - seccomp=./deploy/seccomp/chromium-userns.json

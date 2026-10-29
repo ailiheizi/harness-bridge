@@ -1,0 +1,15 @@
+plugins:
+  http: {}
+  database-sqlite:
+    path: ${{ (env.DATA_DIR || './data') + '/koishi.db' }}
+  help: {}
+  echo: {}
+  schedule:
+    minInterval: 60000
+  rss:
+    timeout: 10000
+    refresh: 60000
+  adapter-telegram:
+    $if: env.ENABLE_TELEGRAM === '1'
+    protocol: polling
+    token: ${{ env.TELEGRAM_BOT_TOKEN }}

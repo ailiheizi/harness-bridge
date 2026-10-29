@@ -1,0 +1,18 @@
+# Linux deployment: an existing OpenShell Docker gateway listens on host loopback.
+# Include after compose.yaml and compose.koishi.yaml. Gateway lifecycle stays external.
+services:
+  groupweave:
+    build:
+      args:
+        ENABLE_OPENSHELL_CLIENT: "1"
+    network_mode: host
+    ports: !reset []
+    environment:
+      HOST: "127.0.0.1"
+      PORT: "${GROUPWEAVE_PORT:-4318}"
+      ENABLE_AI: "1"
+      SANDBOX_AI_BINDING_MODULE: /app/integrations/sub2api-openshell/deployment.mjs
+      GROUPWEAVE_MODEL_CONFIG: /run/groupweave/provider.json
+    volumes:
+      - "${OPENSHELL_CLI_PATH:?Set the reviewed native CLI path}:/opt/openshell:ro"
+      - "${GROUPWEAVE_MODEL_CONFIG_PATH:?Set the private deployment JSON path}:/run/groupweave/provider.json:ro"

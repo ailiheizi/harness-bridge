@@ -1,0 +1,15 @@
+diff --git a/node_modules/koishi-plugin-video-parser-all/lib/logger.js b/node_modules/koishi-plugin-video-parser-all/lib/logger.js
+index 6daa3c7..079da6d 100644
+--- a/node_modules/koishi-plugin-video-parser-all/lib/logger.js
++++ b/node_modules/koishi-plugin-video-parser-all/lib/logger.js
+@@ -51,6 +51,10 @@ function debugLog(level, ...args) {
+     const isProblem = level === 'WARN' || level === 'ERROR';
+     if (!debugEnabled && !isProblem)
+         return;
++    if (!debugEnabled) {
++        write(level, 'video parser request failed');
++        return;
++    }
+     let line = args.map(stringify).join(' ');
+     if (line.length > MAX_LOG_LENGTH) {
+         let cut = MAX_LOG_LENGTH;

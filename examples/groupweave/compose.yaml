@@ -1,0 +1,32 @@
+services:
+  groupweave:
+    build:
+      context: ../..
+      dockerfile: examples/groupweave/Dockerfile
+    ports:
+      - "127.0.0.1:4318:4318"
+    environment:
+      APP_MODE: "preview"
+      ENABLE_AI: "0"
+      HOST: "0.0.0.0"
+      PORT: "4318"
+      DATA_DIR: "/data"
+      ALLOW_LOCAL_PREVIEW: "1"
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_ADMIN_IDS: ""
+    volumes:
+      - groupweave-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    init: true
+    restart: "no"
+volumes:
+  groupweave-data:

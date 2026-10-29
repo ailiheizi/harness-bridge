@@ -1,0 +1,15 @@
+diff --git a/node_modules/file-type/core.js b/node_modules/file-type/core.js
+index d653e66..23aa055 100644
+--- a/node_modules/file-type/core.js
++++ b/node_modules/file-type/core.js
+@@ -1076,6 +1076,10 @@ async function _fromTokenizer(tokenizer) {
+ 		while (tokenizer.position + 24 < tokenizer.fileInfo.size) {
+ 			const header = await readHeader();
+ 			let payload = header.size - 24;
++			// Malformed ASF object sizes must never move the tokenizer backwards.
++			if (!Number.isFinite(payload) || payload < 0) {
++				break;
++			}
+ 			if (_check(header.id, [0x91, 0x07, 0xDC, 0xB7, 0xB7, 0xA9, 0xCF, 0x11, 0x8E, 0xE6, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65])) {
+ 				// Sync on Stream-Properties-Object (B7DC0791-A9B7-11CF-8EE6-00C00C205365)
+ 				const typeId = Buffer.alloc(16);
