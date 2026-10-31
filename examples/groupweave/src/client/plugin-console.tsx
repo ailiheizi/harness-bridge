@@ -10,7 +10,7 @@ const notes: Record<string, { implementation: string; access: string; cost: stri
   'link-brief': { implementation: 'DSH Agent/Skill → Koishi 链接代码 → AI 说明', access: '本次确认的文本及代码结果发送给 DeepSeek；不读取群历史，不打开链接', cost: '最多两次模型请求；一次真实链接代码调用；默认关闭', entry: '群内 /brief 后本人确认；依赖本群链接整理' },
   assistant: { implementation: 'DSH 原生 Agent/Skill · 按目标选择代码', access: '本次确认的目标；最多调用本群链接整理一次，模型不能选择其他群或用户', cost: '最多两次模型请求；最多一次代码调用', entry: '群内 /ask 后本人确认；面板也可使用' },
   welcome: { implementation: 'Koishi 原生文本插件', access: '当前群加入事件的成员显示名及本群模板；不读取历史', cost: '零模型调用；纯文本模板', entry: '平台和本群启用后，新成员加入时自动欢迎' },
-  antiad: { implementation: '既有 antiad 纯预测核心 · 固定 Python 入口', access: '仅本次提交的文本及本群规则；只读平台批准的基准模型', cost: '零大模型调用；一次有界本地推断', entry: '群内 /scan，或回复文本后 /scan；当前只提供检测建议' },
+  antiad: { implementation: '既有 antiad 纯预测核心 · 固定 Python 入口', access: '仅本次提交的文本及本群规则；只读平台批准的基准模型', cost: '零大模型调用；一次有界本地推断', entry: '旧本地适配器暂不可用；原生 /scan 另走群助手 AI 复核并按实际调用计费' },
   reminder: { implementation: '尚未接入', access: '访问范围尚未验收', cost: '尚未验收', entry: '暂时无法使用' },
 };
 

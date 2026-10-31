@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import type { Context, Session } from 'koishi';
 import type { TelegramActor, TelegramBinding } from './telegram.js';
 import { createTelegramConfirmations, type AiFeature, type InputMode } from './telegram/confirmation.js';
+import { AD_REVIEW_PREFIX } from './ad-review.js';
 
 const require = createRequire(import.meta.url);
 const { h } = require('@koishijs/core') as typeof import('koishi');
@@ -91,7 +92,7 @@ export function installAiCommands(ctx: Context, binding: TelegramBinding, option
     const entity = entities.find(e => e.type === 'bot_command' && e.offset === 0 && Number.isSafeInteger(e.length));
     if (!entity || !entity.length) return undefined;
     const command = text.slice(0, entity.length);
-    const match = /^\/(ask|digest|translate|brief)(?:@([a-z0-9_]+))?$/i.exec(command);
+    const match = /^\/(ask|digest|translate|brief|scan)(?:@([a-z0-9_]+))?$/i.exec(command);
     if (!match) return undefined;
     const name = match[1]!.toLowerCase();
     const commandFeature: AiFeature = name === 'digest' ? 'digest' : name === 'brief' ? 'link-brief' : 'assistant';
@@ -114,6 +115,11 @@ export function installAiCommands(ctx: Context, binding: TelegramBinding, option
       if (!original || original.is_topic_message === true || String(original.chat?.id) !== String(raw.chat?.id)) return undefined;
       const input = extractInput(original.text, original.caption);
       return input ? { input, message: original, mode: 'reply', targeted } : undefined;
+    }
+    if (name === 'scan') {
+      if (!direct) return undefined;
+      const input = `${AD_REVIEW_PREFIX}${direct}`;
+      return { input, message: raw, mode: 'command', targeted };
     }
     if (direct) return { input: direct, message: raw, mode: 'command', targeted };
     const original = raw.reply_to_message;
@@ -196,7 +202,7 @@ export function installAiCommands(ctx: Context, binding: TelegramBinding, option
         if (!group.config.features.includes(feature)) return reply(session, src.private ? '当前会话未启用此功能。' : `本群未启用${feature === 'assistant' ? '群助手' : feature === 'digest' ? '智能摘要' : '链接整理与说明'}。`);
         const username = (session as AiSession).bot?.user?.name;
         const commandWord = (src.raw.text ?? '').split(/\s/, 1)[0] ?? '';
-        const targetMatch = /^\/(?:ask|digest|translate|brief)@([a-z0-9_]+)$/i.exec(commandWord);
+        const targetMatch = /^\/(?:ask|digest|translate|brief|scan)@([a-z0-9_]+)$/i.exec(commandWord);
         const targeted = Boolean(targetMatch);
         if ((!src.private && group.config.responseMode === 'mention' && (!targeted || !username || targetMatch?.[1]?.toLowerCase() !== username.toLowerCase()))
           || (targeted && (!username || targetMatch?.[1]?.toLowerCase() !== username.toLowerCase()))) {
@@ -206,11 +212,14 @@ export function installAiCommands(ctx: Context, binding: TelegramBinding, option
         const result = selected;
         const commandName = (src.raw.text ?? '').split(/\s/, 1)[0]?.split('@', 1)[0]?.toLowerCase();
         const usage = commandName === '/translate' ? '用法：/translate <目标语言> <文本>，最多 8 KB；多词目标语言请加引号，例如 /translate "Traditional Chinese" <文本>。'
+          : commandName === '/scan' ? '用法：/scan <要复核的文本>，仅接受明确提供的文本，最多 8 KB。'
           : '用法：提供最多 8 KB 文本，或回复同群文本/图片说明后使用此命令。';
         if (!result?.input || Buffer.byteLength(result.input, 'utf8') > LIMIT) return reply(session, usage, src.messageId);
         const confirmation = confirmations.issue({ featureId: feature, groupId: src.private ? `tg-dm:${src.actor.userId}` : src.actor.groupId, userId: src.actor.userId,
           messageId: result.message.message_id!, updateId: src.updateId, input: result.input, mode: result.mode, targeted: result.targeted });
-        const notice = feature === 'link-brief'
+        const notice = commandName === '/scan'
+          ? '将把本次文本发送给第三方模型进行广告或诈骗风险复核；每次使用按模型实际调用计费。只提供复核建议，不会自动处罚；本次为单次复核，不使用对话上下文或群历史。确认后才会运行。'
+          : feature === 'link-brief'
           ? '将仅用本次输入运行链接整理代码，再把原文和整理结果发送给第三方 AI 生成说明；不访问链接或群历史。确认后才会运行。'
           : '将把这段文本发送给第三方 AI 处理。确认后才会运行；仅问答会使用本人当前会话中明确提交的上下文，可用 /newchat 重置；不读取群历史。';
         await session.send([h.quote(String(result.message.message_id)), h.text(notice),
@@ -218,6 +227,7 @@ export function installAiCommands(ctx: Context, binding: TelegramBinding, option
         } catch { await reply(session, '无法读取本群配置或准备确认；请稍后查看群配置。', src.messageId); }
       };
     ctx.command(`${name} <input:text>`, feature === 'assistant' ? '确认后使用群助手处理文本' : feature === 'digest' ? '确认后生成文本摘要' : '确认后整理并说明本次链接').action(handler);
+    if (feature === 'assistant') ctx.command('scan <input:text>', '确认后复核本次文本的广告或诈骗风险').action(handler);
     if (feature === 'assistant') ctx.command('translate <language:string> <input:text>', '确认后翻译本次文本').action(handler);
   }
 
@@ -293,7 +303,7 @@ export function installAiCommands(ctx: Context, binding: TelegramBinding, option
     } else if (decoded.mode === 'command') {
       const text = original.text;
       const cmd = text?.slice(0, original.entities?.find((e: NonNullable<TgMessage['entities']>[number]) => e.type === 'bot_command' && e.offset === 0)?.length ?? 0);
-      const aliases = decoded.featureId === 'assistant' ? ['ask', 'translate'] : decoded.featureId === 'digest' ? ['digest'] : ['brief'];
+      const aliases = decoded.featureId === 'assistant' ? ['ask', 'translate', 'scan'] : decoded.featureId === 'digest' ? ['digest'] : ['brief'];
       const normalized = cmd?.toLowerCase();
       if (selected?.mode === 'command' && normalized && aliases.some(alias => normalized === `/${alias}`
         || normalized === `/${alias}@${(session as AiSession).bot?.user?.name?.toLowerCase()}`)) input = selected.input;

@@ -125,7 +125,7 @@ export function installGroupCommands(ctx: Context, binding: TelegramBinding, opt
     const names = group.config.features.map(id => ({
       'link-cleaner': commands.get('links') ? '/links <链接或文本> 整理链接' : undefined,
       echo: commands.get('echo') ? '/echo <文本> 文字回显' : undefined,
-      assistant: commands.get('ask') ? '/ask <问题> 单轮问答；/translate <目标语言> <文本> 翻译' : undefined,
+      assistant: commands.get('ask') ? '/ask <问题> 单轮问答；/translate <目标语言> <文本> 翻译；/scan <文本> AI广告复核' : undefined,
       'link-brief': commands.get('brief') ? '/brief <文本> 先整理链接再说明' : undefined,
       digest: commands.get('digest') ? '/digest <文本> 摘要' : undefined,
       welcome: undefined,
@@ -137,9 +137,10 @@ export function installGroupCommands(ctx: Context, binding: TelegramBinding, opt
     rows.push('文件：/fileinfo 查看附件；回复 TXT/Markdown 后 /readfile；/savefile <文字> 生成文件。');
     if (videoHint(session)) rows.push(videoHint(session));
     if (imageHint(session)) rows.push(imageHint(session));
-    rows.push(options.aiConfigured ? 'AI：本群启用后可 /ask、/digest、/translate；/brief 需启用链接整理与说明及链接整理。本人确认第三方处理才执行；/cancel 取消本人任务。' : 'AI 尚未配置：需要平台管理员接入 Docker/DSH 执行入口。');
+    rows.push(options.aiConfigured ? 'AI：本群启用后可 /ask、/digest、/translate、/scan（显式AI广告复核，非本地免费分类器）；/brief 需启用链接整理与说明及链接整理。本人确认第三方处理才执行；/cancel 取消本人任务。' : 'AI 尚未配置：需要平台管理员接入 Docker/DSH 执行入口。');
     rows.push('欢迎功能需平台在管理面板启用插件，再由本群管理员使用 /rules 开启欢迎；群配置不能自行安装平台插件。');
     if (commands.get('rss')) rows.push('RSS：/rss <订阅链接> 添加；/rss -l 查看；/rss -r <订阅链接> 取消。');
+    if (commands.get('rssdigest')) rows.push('订阅摘要：管理员 /rssdigest 每天09:00 先预览来源/期限/调用上限，再本人confirm启用；status/run/stop。按模型调用计费。');
     if (commands.get('remind')) rows.push('提醒：/remind <HH:mm 或 YYYY-MM-DD HH:mm> <文字>；/remind daily <HH:mm> <文字>；/remind every <间隔> <文字>；/remind list；/remind remove <编号>。');
     await send(session, rows.join('\n'));
   });

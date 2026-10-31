@@ -9,6 +9,11 @@ const DAY = '1d';
 const MAX_TEXT = 3000;
 const EDIT_SAFETY_WINDOW_MS = 60_000;
 const DELIVERY_COMMAND = 'groupweave-reminder-deliver';
+export const RSS_DIGEST_DELIVERY = 'groupweave-rss-digest-deliver';
+export interface RssDigestSchedules {
+  create(session: Session, planId: string, time: string): Promise<number>;
+  remove(botSid: string, channelId: string, scheduleId: number, planId: string): Promise<void>;
+}
 
 export interface ScheduleIntegrationOptions {
   /** Must verify the current registered group and current Telegram admin role. */
@@ -131,22 +136,27 @@ function resultText(value: unknown): string {
 }
 
 /** Add the thin group-admin command surface around koishi-plugin-schedule. */
-export function installScheduleIntegration(ctx: Context, options: ScheduleIntegrationOptions): void {
+export function installScheduleIntegration(ctx: Context, options: ScheduleIntegrationOptions): RssDigestSchedules {
+  let ready: RssDigestSchedules | undefined;
   let installed = false;
   const tryInstall = () => {
     if (installed) return;
     const commands = (ctx.$commander as unknown as { _commandList?: any[] })._commandList ?? [];
     if (!commands.some(command => command.name === 'schedule')) return;
     installed = true;
-    ctx.inject(['database'], (injected: Context) => installReadyIntegration(injected, options));
+    ctx.inject(['database'], (injected: Context) => { ready = installReadyIntegration(injected, options); });
   };
   // Loader setup runs before YAML plugins; attach to the native command
   // registration event instead of probing or starting a second plugin copy.
   ctx.on('command-added', tryInstall);
   tryInstall();
+  return {
+    create: (session, id, time) => { if (!ready) throw new Error('原生 schedule 尚未就绪。'); return ready.create(session, id, time); },
+    remove: (sid, channel, schedule, id) => { if (!ready) throw new Error('原生 schedule 尚未就绪。'); return ready.remove(sid, channel, schedule, id); },
+  };
 }
 
-function installReadyIntegration(ctx: Context, options: ScheduleIntegrationOptions): void {
+function installReadyIntegration(ctx: Context, options: ScheduleIntegrationOptions): RssDigestSchedules {
   const { authorize } = options;
   (ctx.model as any).extend('groupweave_paused_schedule', {
     scheduleId: 'unsigned', assignee: 'string', channelId: 'string', time: 'timestamp',
@@ -154,7 +164,7 @@ function installReadyIntegration(ctx: Context, options: ScheduleIntegrationOptio
   }, { primary: 'scheduleId' });
   const commands = (ctx.$commander as unknown as { _commandList?: any[] })._commandList ?? [];
   const scheduleCommand = commands.find(command => command.name === 'schedule');
-  if (!scheduleCommand) return;
+  if (!scheduleCommand) throw new Error('原生 schedule 命令未就绪。');
   let mutationBusy = false;
 
   // Add permission checks for the native command names. These checks grant
@@ -418,4 +428,24 @@ function installReadyIntegration(ctx: Context, options: ScheduleIntegrationOptio
         mutationBusy = false;
       }
     });
+  // Specific adapter for the preinstalled RSS digest. The upstream plugin still
+  // owns timers, schedule rows and restart reconstruction; no new scheduler.
+  return {
+    async create(session, planId, time) {
+      if (!/^[a-f0-9-]{36}$/.test(planId) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time) || !await authorize(session)) throw new Error('摘要日程未授权或时间无效。');
+      const prepared = prepareSchedule({ mode: 'create', date: time, interval: DAY, text: 'RSS digest' }).schedule!;
+      const command = `${RSS_DIGEST_DELIVERY} ${planId}`;
+      const before = await ctx.database.get('schedule', { assignee: [session.sid] }) as ScheduleRow[];
+      await runNative(session, { ...prepared.options, rest: command }, [prepared.dateArgument]);
+      const prior = new Set(before.map(row => row.id));
+      const created = (await ctx.database.get('schedule', { assignee: [session.sid] }) as ScheduleRow[]).filter(row => !prior.has(row.id) && row.command === command && String(row.event?.channel?.id) === session.channelId);
+      if (created.length !== 1) throw new Error('未能确认摘要日程保存。');
+      return created[0].id;
+    },
+    async remove(botSid, channelId, scheduleId, planId) {
+      const row = (await ctx.database.get('schedule', [scheduleId]) as ScheduleRow[])[0];
+      if (row?.assignee === botSid && String(row.event?.channel?.id) === channelId && row.command === `${RSS_DIGEST_DELIVERY} ${planId}`) await ctx.database.remove('schedule', [scheduleId]);
+    },
+  };
+
 }

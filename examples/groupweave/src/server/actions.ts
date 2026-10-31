@@ -4,6 +4,7 @@ import type { Group, GroupConfig, Proposal, Task } from '../shared.js';
 import type { ConversationMessage, TaskArtifact } from './ai.js';
 import { NATIVE_FEATURES, parseNativeFeatureRule } from './group-config.js';
 import { Store } from './store.js';
+import { AD_REVIEW_PREFIX } from './ad-review.js';
 
 export interface ExecutorRequest {
   /** Server-created identity for the persisted task; never copied from request JSON. */
@@ -263,7 +264,7 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
     return activated.proposal;
   }
 
-  async function runTask(actorId: string, groupId: string, value: unknown, isActive = () => true, callerSignal?: AbortSignal, execution: { conversation?: boolean } = {}): Promise<Task> {
+  async function runTask(actorId: string, groupId: string, value: unknown, isActive = () => true, callerSignal?: AbortSignal, execution: { conversation?: boolean; modelProfileId?: string } = {}): Promise<Task> {
     if (closed) return deny(503, 'SERVICE_CLOSING', '服务正在关闭，不接受新任务。');
     const group = await getGroup(actorId, groupId);
     // Role refresh is asynchronous. A request that crossed shutdown while it
@@ -313,16 +314,17 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
     const executable = plugin.enabled && plugin.available && selectedExecutor;
     const release = executable ? acquireExecution(group.id) : undefined;
     const codeCapability = store.plugin('link-cleaner');
-    const allowLinkTool = featureId === 'assistant' && group.config.features.includes('link-cleaner') && codeCapability?.enabled === true && codeCapability.available;
+    const adReview = featureId === 'assistant' && input.startsWith(AD_REVIEW_PREFIX);
+    const allowLinkTool = featureId === 'assistant' && !adReview && group.config.features.includes('link-cleaner') && codeCapability?.enabled === true && codeCapability.available;
     const codeVersions = featureId === 'link-brief' || allowLinkTool ? store.permissionVersions(group.id, 'link-cleaner') : undefined;
     // The native translation command uses this exact fixed wrapper and is a one-shot transformation.
     const translation = featureId === 'assistant' && /^Translate the following text into [^\r\n]{1,40}\. Preserve its meaning and tone\. Return only the translation\.\n\nText:\n/u.test(input);
-    const rememberConversation = featureId === 'assistant' && execution.conversation !== false && !translation;
+    const rememberConversation = featureId === 'assistant' && execution.conversation !== false && !translation && !adReview;
     const savedConversation = isAi ? store.conversation(group.id, actorId) : undefined;
     // A private result must never become context for a later group-visible answer.
     const conversation: ReturnType<Store['conversation']> | undefined = rememberConversation && savedConversation && savedConversation.audience !== audience
       ? { ...savedConversation, messages: [], audience, revision: savedConversation.revision + 1 } : savedConversation;
-    const modelProfileId = isAi ? conversation?.modelProfileId ?? options.defaultModelProfileId : undefined;
+    const modelProfileId = isAi ? execution.modelProfileId ?? conversation?.modelProfileId ?? options.defaultModelProfileId : undefined;
     if (modelProfileId && !profiles.some(item => item.id === modelProfileId)) { release?.(); return deny(409, 'MODEL_UNAVAILABLE', '先前模型配置已移除，请重新选择。'); }
     let artifact: TaskArtifact | undefined;
     const task: Task = {

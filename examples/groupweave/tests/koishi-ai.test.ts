@@ -10,6 +10,7 @@ import { createGroupActions } from '../src/server/actions.js';
 import { createTelegramBinding } from '../src/server/telegram-binding.js';
 import { installAiCommands } from '../src/server/koishi-ai.js';
 import { createKoishiRuntime } from '../src/server/koishi-runtime.js';
+import { AD_REVIEW_PREFIX } from '../src/server/ad-review.js';
 
 const require = createRequire(import.meta.url);
 const { Bot } = require('@koishijs/core') as typeof import('koishi');
@@ -366,4 +367,42 @@ test('native @bot mention runs only in mention mode and confirms the stripped ex
     guild: { id: chatId }, channel: { id: chatId, type: 0 }, message: { id: '111', content: noMentionRaw.message.text, elements: [] }, _data: noMentionRaw } as any);
   await unconfigured.onMessage!(noMentionSession);
   assert.equal(unconfigured.bot.sent.length, 0, 'unconfigured bot stays quiet without an explicit mention');
+});
+
+test('native /scan explicitly confirms one assistant review, rejects another user, and requires assistant permission', async t => {
+  const f = await fixture(t);
+  const raw = f.makeRaw(801, '/scan This offer promises guaranteed returns: https://example.test', 5);
+  await f.run('scan explicit text', raw);
+  const token = f.bot.sent.map(getButton).filter(Boolean).at(-1);
+  assert.ok(token, 'scan proposes the existing third-party AI confirmation');
+  assert.match(contents(f.bot.sent.at(-1)), /广告.*风险复核.*每次.*模型.*建议.*处罚.*单次/);
+  await f.button(token!, 802, raw.message);
+  const task = f.store.reservation(`tg:${chatId}`, `tg-user:${userId}`, 'koishi-ai:1801:801')?.task;
+  assert.equal(task?.featureId, 'assistant');
+  assert.equal(task?.input, `${AD_REVIEW_PREFIX}This offer promises guaranteed returns: https://example.test`);
+  assert.equal(task?.modelCalls, 1);
+  assert.equal(task?.toolCalls, 0);
+  assert.ok(f.bot.sent.some(message => contents(message).startsWith('ANSWER:')));
+
+  const wrongUser = f.makeRaw(803, '/scan A second explicit message', 5);
+  await f.run('scan second message', wrongUser);
+  const secondToken = f.bot.sent.map(getButton).filter(Boolean).at(-1);
+  assert.ok(secondToken);
+  const callbackRaw = { update_id: 1_804, callback_query: { id: 'wrong-user', from: { id: 43, is_bot: false }, data: secondToken,
+    message: { message_id: 804, from: { id: 99, is_bot: true }, chat: { id: Number(chatId), type: 'supergroup' }, reply_to_message: wrongUser.message } } };
+  await f.onButton!({ platform: 'telegram', type: 'interaction/button', user: { id: '43' }, guildId: chatId, channelId: chatId,
+    event: { user: { id: '43' }, _data: callbackRaw }, bot: { user: { id: '99', name: 'testbot' } }, async send(content: any) { return f.bot.sendMessage(chatId, content); } });
+  assert.equal(f.store.reservation(`tg:${chatId}`, 'tg-user:43', 'koishi-ai:1804:803'), undefined);
+  assert.equal(f.store.reservation(`tg:${chatId}`, `tg-user:${userId}`, 'koishi-ai:1804:803'), undefined);
+
+  const current = await f.binding.getGroup({ groupId: chatId, userId, role: 'admin' });
+  assert.ok(current);
+  const proposal = await f.actions.previewRules(`tg-user:${userId}`, `tg:${chatId}`, {
+    config: { features: ['link-cleaner', 'digest', 'link-brief'] }, baseVersion: current.version });
+  await f.actions.activateRules(`tg-user:${userId}`, proposal.id);
+  const before = f.bot.sent.length;
+  await f.run('scan without assistant permission', f.makeRaw(805, '/scan not authorized for assistant', 5));
+  assert.ok(f.bot.sent.slice(before).some(message => contents(message).includes('未启用群助手')));
+  assert.equal(f.bot.sent.slice(before).map(getButton).filter(Boolean).length, 0);
+  assert.equal(f.store.reservation(`tg:${chatId}`, `tg-user:${userId}`, 'koishi-ai:1805:805'), undefined);
 });

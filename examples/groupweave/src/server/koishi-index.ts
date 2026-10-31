@@ -29,6 +29,7 @@ import { loadSandboxProfiles, type ModelProfile } from './sandbox-profiles.js';
 import { nativeFeatureAllowed, type NativeFeature } from './group-config.js';
 import { installSessionCommands } from './koishi-session.js';
 import { installNaturalRuleCommands } from './rule-proposals.js';
+import { installRssDigestIntegration, type RssDigestIntegration } from './rss-digest.js';
 
 class StartupConfigurationError extends Error {}
 const require = createRequire(import.meta.url);
@@ -227,13 +228,15 @@ export async function startKoishiHost(configPath = resolve(process.env.KOISHI_CO
           installTranscodeCommands(ctx, { authorize: authorizeNativeFeature('media', authorizeMedia), ffmpegPath, ffprobePath });
         }
         installWelcomeIntegration(ctx, binding);
+        let rssDigest: RssDigestIntegration;
         installRssIntegration(ctx, {
+          onItem: async (platform, channel, content) => { await rssDigest?.capture(platform, channel, content); },
           authorize: authorizeNativeAdmin,
           enabled: authorizeNativeFeature('rss', authorizeNativeAdmin),
           allowBroadcast: async (platform, channelId) => platform === 'telegram' && /^-[1-9]\d*$/.test(channelId)
             && app!.groupweave.store.nativeGroupEnabled(telegramGroupId(channelId), 'rss'),
         });
-        installScheduleIntegration(ctx, {
+        const digestSchedules = installScheduleIntegration(ctx, {
           authorize: authorizeSchedule,
           authorizeLinks: async session => {
             const source = telegramCommandSource(session);
@@ -256,6 +259,50 @@ export async function startKoishiHost(configPath = resolve(process.env.KOISHI_CO
               const receipts = await session.send(h.text(task.status === 'succeeded' ? task.output : '链接整理未成功完成，未投递结果。'));
               await binding.recordDelivery(actor, task.id, receipts?.length ? 'sent' : 'unknown');
             } catch { await binding.recordDelivery(actor, task.id, 'unknown'); }
+          },
+        });
+        rssDigest = installRssDigestIntegration(ctx, {
+          schedules: digestSchedules,
+          authorize: async actor => {
+            try {
+              if (!ctx.$commander.get('rss') || !ctx.$commander.get('schedule')) return;
+              const groupId = telegramGroupId(actor.channelId), actorId = telegramActorId(actor.userId);
+              const group = await app!.groupweave.actions.getGroup(actorId, groupId, true);
+              const plugin = app!.groupweave.store.plugin('digest');
+              if (!group.config.features.includes('digest') || !plugin?.available || !plugin.enabled
+                || !nativeFeatureAllowed(group.config, 'rss') || !nativeFeatureAllowed(group.config, 'schedule')) return;
+              const models = await app!.groupweave.actions.listModels(actorId, groupId);
+              const model = models.profiles.find(item => item.id === models.selectedId);
+              if (!model) return;
+              return { permission: JSON.stringify([app!.groupweave.store.permissionVersions(groupId, 'digest'), model.id]),
+                language: group.config.language, modelProfileId: model.id, modelLabel: model.label };
+            } catch { return; }
+          },
+          execute: async (plan, input, key, signal) => {
+            const task = await app!.groupweave.actions.runTask(telegramActorId(plan.userId), telegramGroupId(plan.channelId), {
+              input, featureId: 'digest', audience: 'group', idempotencyKey: key, acknowledgeExternalProcessing: true,
+            }, () => !signal.aborted, signal, { conversation: false, modelProfileId: plan.modelProfileId });
+            if (task.status !== 'succeeded') throw new Error('订阅摘要未成功完成。');
+            return { text: task.output, taskId: task.id };
+          },
+          deliver: async (plan, result, isActive) => {
+            const actor = { groupId: plan.channelId, userId: plan.userId, role: 'admin' as const };
+            await app!.groupweave.actions.getGroup(telegramActorId(plan.userId), telegramGroupId(plan.channelId), true);
+            if (!isActive() || !await binding.claimDelivery(actor, result.taskId)) throw new Error('订阅摘要投递未授权。');
+            const bot = ctx.bots[plan.botSid];
+            let withheld = false;
+            try {
+              for (const text of result.text.match(/[\s\S]{1,3500}/g) ?? []) {
+                if (!bot || !isActive() || !binding.deliveryStillAuthorized?.(actor, result.taskId)
+                  || !app!.groupweave.store.nativeGroupEnabled(telegramGroupId(plan.channelId), 'rss')
+                  || !app!.groupweave.store.nativeGroupEnabled(telegramGroupId(plan.channelId), 'schedule')) {
+                  withheld = true; await binding.recordDelivery(actor, result.taskId, 'withheld'); throw new Error('摘要投递已撤销。');
+                }
+                const receipts = await bot.sendMessage(plan.channelId, h.text(text));
+                if (!receipts?.length) throw new Error('摘要投递状态未知。');
+              }
+              await binding.recordDelivery(actor, result.taskId, 'sent');
+            } catch (error) { if (!withheld) await binding.recordDelivery(actor, result.taskId, 'unknown'); throw error; }
           },
         });
       },

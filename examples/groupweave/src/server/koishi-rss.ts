@@ -5,6 +5,8 @@ export interface RssIntegrationOptions {
   authorize: (session: Session) => Promise<boolean>;
   enabled?: (session: Session) => Promise<boolean>;
   /** Check current policy for background delivery, which has no initiating user. */
+  /** Observe only an already-authorized native RSS notification; no extra fetch. */
+  onItem?: (platform: string, channelId: string, content: string) => Promise<void>;
   allowBroadcast?: (platform: string, channelId: string) => Promise<boolean>;
 }
 
@@ -31,7 +33,11 @@ export function installRssIntegration(ctx: Context, options: RssIntegrationOptio
           const separator = target.indexOf(':');
           if (separator < 1) continue;
           try {
-            if (await options.allowBroadcast!(target.slice(0, separator), target.slice(separator + 1))) allowed.push(target);
+            if (await options.allowBroadcast!(target.slice(0, separator), target.slice(separator + 1))) {
+              // Collection failures must not suppress the existing RSS delivery.
+              try { await options.onItem?.(target.slice(0, separator), target.slice(separator + 1), String(content)); } catch {}
+              allowed.push(target);
+            }
           } catch { /* Policy unavailable: do not deliver this item. */ }
         }
         return allowed.length ? broadcast(allowed, content, forced) : [];
