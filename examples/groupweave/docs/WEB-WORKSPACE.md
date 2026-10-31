@@ -44,3 +44,17 @@
 
 本页记录的是本轮界面接线与代表操作，不重新证明旧插件全部组合或通用隔离。
 产品未完成功能另见[里程碑状态](MILESTONE-STATUS.md)。
+
+## 线上交付
+
+前端源码 c8ba8be 已部署至现有 Bot；仅 overlay `src/client` 与构建后的
+`dist/client`。镜像 `sha256:913163a48d1b897e42814c7255c22e55f80395ede49fafd1c59fc75eb1499028`。
+HTTP 提供的 index、JS、CSS 原始 SHA256 均与本地构建清单一致。
+
+停前 pending/runningQueued 为0。部署只更改 Image；其余 Config/HostConfig、
+环境、挂载、mTLS、DSH 与 Node26.13 保留。健康 HTTP200、Telegram/执行器连接正常、
+restartCount0；schema4、全部4群配置、会话和插件记录保持，没有恢复数据库。
+38个其他既有容器的状态与 StartedAt 未变。未调用模型或重复插件检查。
+
+私有部署收据留在 ignored artifacts，不随公开源码发布。现有 Mini App 重新打开
+即可取得新版；本机合成预览与真实 TG 登录仍为不同环境。

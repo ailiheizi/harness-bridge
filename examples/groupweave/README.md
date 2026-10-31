@@ -1,6 +1,6 @@
 # 群织 · GroupWeave
 
-GroupWeave is a complete multi-tenant Telegram bot application. Platform
+GroupWeave is a working multi-tenant Telegram bot reference application. Platform
 administrators expose reviewed capabilities; each group's administrators
 configure, preview, and enable them; members use the capabilities available in
 their group. Koishi hosts native code plugins, while model-backed tasks use the
@@ -9,7 +9,7 @@ container or a resident Agent per group.
 
 ## Current case
 
-M1–M4 are implemented and deployed. Representative real Telegram evidence
+The foundational M1–M4 slices are implemented and deployed; this does not mean the full product roadmap is complete. See [milestone status and remaining features](docs/MILESTONE-STATUS.md) and the [updated Web workspace](docs/WEB-WORKSPACE.md). Representative real Telegram evidence
 through 2026-10-31 includes:
 
 - Single-turn group `/brief`: the bot's link-cleanup code prepared the input,

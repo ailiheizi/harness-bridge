@@ -60,6 +60,8 @@ parsing remains best-effort; arbitrary plugin code is trusted platform code.
 The [feature catalog](examples/groupweave/docs/FEATURE-CATALOG.md) lists actual
 commands, versions, conditions and recorded outcomes; the
 [deployment guide](examples/groupweave/docs/REPOSITORY-SETUP.md) covers the complete case.
+Foundational milestone delivery does not mean the full product roadmap is complete. See [remaining features](examples/groupweave/docs/MILESTONE-STATUS.md) and the [Web workspace update](examples/groupweave/docs/WEB-WORKSPACE.md).
+
 The [M5/M6 closeout](examples/groupweave/docs/CLOSEOUT-20261031.md) records
 deployment reuse and six bounded data-boundary cases, including explicit untested limits.
 The [follow-up](examples/groupweave/docs/DEPLOYMENT-FOLLOWUP-20261031.md) adds
