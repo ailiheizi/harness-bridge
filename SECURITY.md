@@ -30,6 +30,14 @@ system.
 
 ## Known limitations
 
+The complete Bot case's [2026-10-31 bounded check](examples/groupweave/docs/CLOSEOUT-20261031.md)
+records six executed negative cases for cross-scope access, forged authority,
+paths, credential visibility, task residue and background ownership. It keeps
+synthetic application/transport checks separate from two real native sandboxes.
+It did not test model obedience, production egress, live JWT replay, arbitrary
+trusted plugins or general kernel escape. A scoped pass does not remove the
+host responsibilities or limitations below.
+
 The current OpenShell CLI delete is name-based. A pre-delete identity check
 does not make that operation atomic. A verified bridge cleanup result confirms
 the observed stop and native name absence only; it does not confirm deletion of

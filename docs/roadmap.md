@@ -20,6 +20,11 @@ new package, protocol, or separate framework project.
 
 ## GroupWeave's known remaining features
 
+M0–M6's agreed delivery scope is complete as of 2026-10-31. Deployment and the
+six bounded data-boundary cases are recorded in the
+[closeout](../examples/groupweave/docs/CLOSEOUT-20261031.md). The limitations
+below remain explicit; they do not automatically create new feature or test work.
+
 The application record identifies actual product gaps rather than treating
 every untested combination as a feature request:
 

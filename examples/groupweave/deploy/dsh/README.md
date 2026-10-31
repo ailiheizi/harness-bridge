@@ -11,6 +11,8 @@ From the repository root:
 docker build -f examples/groupweave/deploy/dsh/Dockerfile \
   -t groupweave-dsh:0.2.0-rc.2 .
 docker image inspect groupweave-dsh:0.2.0-rc.2 --format '{{.Id}}'
+docker run --rm --network none --entrypoint node groupweave-dsh:0.2.0-rc.2 --version
+docker run --rm --network none --entrypoint dsh groupweave-dsh:0.2.0-rc.2 --version
 ```
 
 Build or import the image into the Docker image store used by your existing
@@ -20,7 +22,11 @@ Docker daemon is not sufficient. Match the workload architecture to that
 driver. OpenShell itself must already be installed and running on a compatible
 Linux host; follow its [official sandbox guide](https://docs.nvidia.com/openshell/v0.1.3/how-it-works/sandboxes/overview).
 
-The image uses the same DSH and Node base versions as the recorded live case.
+The recipe pins Node 26.13.0 by image digest and DSH 0.2.0-rc.2. Image tags
+are build conveniences: use the inspected immutable image ID in the protected
+provider JSON, and record the actual versions on the target architecture.
+When upgrading Node or the exporter, build a new image and update that reviewed
+binding explicitly; merely rebuilding a mutable tag does not update the JSON.
 This public recipe omits private test fixtures and credentials. The repository
 packaging check does not rebuild or re-accept every upstream DSH function;
 recorded real-task evidence is described in the application acceptance notes.
@@ -29,6 +35,13 @@ For a complete application-to-sandbox call, configure the existing
 [Sub2API/OpenAI-compatible binding](../../integrations/sub2api-openshell/README.md)
 and its loopback gateway/meter routes. The real model key stays in the trusted
 application; only a one-task admission credential reaches the sandbox.
+The gateway, Docker driver and native CLI must already use compatible
+OpenShell 0.1.3 contracts. The production Compose binding mounts its native
+mTLS client bundle into the **trusted Bot only**. Do not copy that bundle,
+host HOME, provider JSON, a real model key or a Docker socket into this image
+or its task workspace. The gateway's server certificate/CA and the driver's
+callback configuration are external deployment prerequisites, not DSH image
+settings. Public gateway health does not verify protected API authentication.
 
 For direct calls without the Bot UI, use the root
 [`createHarnessBridge`](../../../../index.mjs) API and

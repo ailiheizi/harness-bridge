@@ -57,9 +57,14 @@ switches and reviewable AI configuration, bounded personal conversations,
 task history, approved model selection, and fixed Markdown sandbox results.
 See the [usage guide](examples/groupweave/docs/M1-M4-USAGE.md). Anonymous site
 parsing remains best-effort; arbitrary plugin code is trusted platform code.
+The [feature catalog](examples/groupweave/docs/FEATURE-CATALOG.md) lists actual
+commands, versions, conditions and recorded outcomes; the
+[deployment guide](examples/groupweave/docs/REPOSITORY-SETUP.md) covers the complete case.
+The [M5/M6 closeout](examples/groupweave/docs/CLOSEOUT-20261031.md) records
+deployment reuse and six bounded data-boundary cases, including explicit untested limits.
 The application record distinguishes implementation, deployment and real
 Telegram evidence; a source change alone is not a live delivery receipt. See its [TODO](examples/groupweave/docs/TODO.md),
-[acceptance](examples/groupweave/docs/ACCEPTANCE-20261022-NATIVE.md), and
+[current delivery](examples/groupweave/docs/DELIVERY-20261031.md), and
 [security notes](SECURITY.md).
 
 ## Run the local preview

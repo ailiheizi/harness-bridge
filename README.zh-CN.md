@@ -43,8 +43,11 @@ GroupWeave 复用 Koishi、grammY、Fastify、React/Vite、DSH、OpenShell 及�
 
 2026-10-31 源码新增在线插件维护、每群工具开关、AI 配置提案、个人有界会话、任务历史、可信模型选择与固定
 Markdown 沙箱产物。使用方式见[指南](examples/groupweave/docs/M1-M4-USAGE.md)。匿名站点解析仍是尽力服务；
+完整命令、版本、启用条件与已验证结果见[功能速查](examples/groupweave/docs/FEATURE-CATALOG.md)，
+部署与升级见[部署说明](examples/groupweave/docs/REPOSITORY-SETUP.md)。
+[M5/M6 收尾](examples/groupweave/docs/CLOSEOUT-20261031.md)记录了部署复用与六个有界数据反例的结果和未测范围。
 平台插件属于可信代码。源码实现、目标部署与真实 TG 交付分别记录，功能更新本身不等于线上验收通过。见其
-[TODO](examples/groupweave/docs/TODO.md)、[验收记录](examples/groupweave/docs/ACCEPTANCE-20261022-NATIVE.md)
+[TODO](examples/groupweave/docs/TODO.md)、[当期交付记录](examples/groupweave/docs/DELIVERY-20261031.md)
 和[安全说明](SECURITY.md)。
 
 ## 运行本地预览

@@ -1,222 +1,214 @@
 # Native Koishi
 
-[`koishi.yml`](../koishi.yml) is a normal Koishi YAML config. It loads the
-official Telegram adapter (long polling), HTTP service, SQLite database, Help,
-and Echo plugins. `ENABLE_TELEGRAM=0` skips the Telegram adapter even if a token
-is present. Set it to `1` only when intentionally connecting a real bot; startup
-then requires `TELEGRAM_BOT_TOKEN` and at least one numeric
-`TELEGRAM_ADMIN_IDS` value.
+The native entry uses Koishi's ordinary Loader, official Telegram polling
+adapter, HTTP service and SQLite plugin. It keeps identity, group permissions,
+confirmation, persistence and delivery in GroupWeave. Do not run the legacy
+GrammY receiver or another instance with the same Telegram token alongside it.
 
 ## Run locally
 
-Install the pinned dependencies once, make a private environment file, and
-start the native entry:
+Use a complete repository checkout and Node.js 26.13.0. From the repository
+root, install the bridge before the example's local `file:../..` dependency:
 
 ```sh
 npm ci
-cp .env.koishi.example .env.local
+cd examples/groupweave
+npm ci
 npm run build
-npm run start:koishi
-```
-
-The template defaults to `ENABLE_TELEGRAM=0`, `HOST=127.0.0.1`, and port 4318.
-With Telegram disabled, nothing polls Telegram. The native app runs with
-preview mode off and has no synthetic/demo login. The browser management UI
-requires a real Telegram Mini App launch with valid Telegram `initData`; local
-localhost alone does not create an authenticated UI session.
-
-To connect a real bot, set `ENABLE_TELEGRAM=1`, the bot token, and platform
-admin user IDs in `.env.local`. The bot must be a Telegram group administrator
-for `/register` and member-role verification. Test with a test bot and group.
-Keep `.env.local` private.
-
-### Optional Node.js environment proxy
-
-The native host can use Node.js 26's built-in HTTP(S) proxy support when a
-deployment requires an outbound proxy. It is off by default. Node reads
-`NODE_USE_ENV_PROXY`, `HTTP_PROXY`, `HTTPS_PROXY`, and optionally `NO_PROXY`
-when the process starts. For local `npm run start:koishi`, export them in the
-invoking shell; setting them only in Koishi's later-loaded `.env.local` is too
-late. With Compose, pass the private file through `--env-file .env.local`; the
-override forwards the values and defaults to disabled/empty. Do not commit
-proxy URLs or credentials.
-
-The Koishi `@cordisjs/plugin-proxy-agent` integration is not used here: its
-bundled undici 6 dispatcher is incompatible with Node 26's built-in fetch and
-can fail with `InvalidArgumentError: invalid onError method`. Node's native
-environment proxy avoids injecting that dispatcher. The 2026-10-26 live check
-confirmed Telegram `getMe`, polling, and remote file transfers through the
-configured native proxy. This does not route every HTTP client: the manual
-`/parse` Axios requests explicitly disable proxying, and media downloads use
-pinned HTTPS connections.
-
-## Native commands and scope
-
-In Telegram, `/help` and `/echo <text>` come from the official Koishi Help and
-Echo plugins and also work in private chats. The custom business commands below
-only process real group messages:
-
-- `/register` lets a current group admin register that group after the bot is
-  made an admin.
-- `/settings` shows that registered group's current settings to its admin.
-- `/plugins` lists that group's available features.
-- `/status` shows the native bot connection state and whether the Docker AI route is configured.
-- `/rules <rules>` previews a change; the proposal creator confirms it with
-  `/applyrules <proposal-id>`.
-- `/links <text>` runs the currently connected fixed link-cleanup capability.
-- `/cancel` requests cancellation of the caller's active task in that group.
-
-Private `/start` gives onboarding guidance and file commands. Private chats do not list groups,
-read group data, or grant group access. `/fileinfo`, `/readfile`, and `/savefile`
-process the caller's current input in private chats and registered groups.
-The upstream `/help` command lists registered Koishi command names, and `/echo`
-remains available in private chats; a private call to a GroupWeave group command
-does not act on a group.
-
-## Data and configuration
-
-`DATA_DIR` defaults to `./data`. It contains two separate SQLite files:
-`groupweave.sqlite` for GroupWeave groups, proposals, tasks, and audit records;
-`koishi.db` for Koishi's own database. They have separate owners and are not
-automatically isolated from each other. Restarting loads existing data; it does
-not seed or import it.
-
-The loaded YAML is read-only at runtime. Edit `koishi.yml` as ordinary YAML and
-restart `start:koishi` to apply changes. This entry does not provide a Koishi
-Console or hot-import plugin manager. The legacy `npm start` and `npm run dev`
-commands still launch the older app: they default to preview mode, while
-`APP_MODE=telegram` enables its legacy GrammY receiver. Do not run that receiver
-alongside the native entry with the same Telegram token.
-
-For a shared configuration, keep a separate copy in this project directory and
-select it using the existing file entrypoint:
-
-```sh
+cp .env.koishi.example .env.local
+chmod 600 .env.local
+# Choose ONE source for the same ordinary YAML destination:
 cp koishi.yml koishi.personal.yml
-# Edit koishi.personal.yml locally, keeping credentials as env references.
+# Or: cp examples/native/koishi-minimal.yml koishi.personal.yml
 KOISHI_CONFIG=koishi.personal.yml npm run start:koishi
 ```
 
-The selected file is ordinary Koishi YAML, without merging or inheritance.
-Its enabled npm packages must already be installed in this project's lockfile;
-using a shared file does not install packages or supply credentials. Keep it in
-the project directory so native package resolution and `.env.local` stay in
-the same scope. AstrBot JSON profiles use another format and are not imported.
+The default preset includes RSS and schedule. The minimal preset keeps HTTP,
+SQLite, Help, Echo and optional Telegram. Both retain the same business
+commands. The configuration is ordinary YAML, with no import/conversion step or
+merging. Keep a local copied YAML in the example root so package lookup and
+`.env.local` stay in the same scope. Credentials belong in the private
+environment/provider file, not YAML.
 
-A ready-to-copy [minimal preset](../examples/native/README.md) keeps HTTP,
-SQLite, Help, Echo and optional Telegram while omitting RSS and schedule.
-Copy `examples/native/koishi-minimal.yml` to the project root, then select it
-with `KOISHI_CONFIG=koishi-minimal.yml`. Both presets retain the same business
-entrypoints; AI and media are controlled by their existing environment switches.
+The template defaults to Telegram/AI/media/render/site-parser off, loopback
+host and port 4318. With `PUBLIC_ORIGIN` empty, the local health URL is
+`http://127.0.0.1:4318/api/health`. There is no demo login in the native entry.
+The browser management UI requires a real Telegram Mini App launch and valid
+`initData`; localhost does not create an authenticated session.
 
-### Native plugin maintenance
+Set `ENABLE_TELEGRAM=1`, `TELEGRAM_BOT_TOKEN` and numeric platform administrator
+`TELEGRAM_ADMIN_IDS` only for an intentionally connected bot. Group
+registration and member-role verification need the bot to be a group admin.
+Use a separate test bot/group when testing that boundary.
 
-The supported maintenance path is **reviewed package plus ordinary YAML plus
-restart**. The repository already includes Koishi's official Loader and pins
-plugin package versions in `package.json` / `package-lock.json`. To add another
-trusted plugin, first check its compatibility, configuration schema, storage,
-network access, and message-delivery scope. Add its exact package version with
-`npm install --save-exact <package>@<version>`, review the package and lockfile
-changes, then add its documented key and options under `plugins:` in a selected
-Koishi YAML file. Build and deploy the updated image; the plugin becomes active
-when the native entry restarts. To disable a plugin, remove its YAML entry and
-restart. To remove its package too, remove it from dependencies and regenerate
-the lockfile through npm, then rebuild. Keep required host plugins (`http`,
-`database-sqlite`, `help`, and `echo`) in every selected configuration.
+### Optional Node.js environment proxy
 
-For an already-installed plugin, changing only its YAML entry does not require
-installing packages. For example, the minimal preset omits RSS and schedule;
-the full `koishi.yml` enables both. The `examples/native/README.md` recipe
-shows how to copy and select the minimal preset. `KOISHI_CONFIG` selects one
-complete YAML file; configurations do not merge. Credentials stay in the
-private environment file, not YAML.
+Node.js 26 supports `NODE_USE_ENV_PROXY`, `HTTP_PROXY`, `HTTPS_PROXY` and
+`NO_PROXY`. Export them before starting the local process; Loader's later
+`.env.local` read is too late for Node startup settings. Compose forwards them
+from its private `--env-file` and defaults to disabled/empty. Keep proxy URLs
+and credentials private. The old Cordis proxy-agent integration is not used;
+its undici dispatcher conflicts with Node 26's built-in fetch. This setting
+does not route every HTTP client: site-parser Axios requests disable proxying,
+and media uses its pinned HTTPS download boundary.
 
-This is file-based maintenance, not a web Console or live hot-reload. It only
-covers plugins deliberately included in the reviewed image; there is no
-marketplace, arbitrary runtime npm install, or untrusted-plugin sandbox.
-Plugins execute in the application process and must be treated as trusted code.
-If AIL-28 requires browser-based plugin installation or online administration,
-that remains an explicit unimplemented requirement; this file workflow does
-not claim to satisfy it.
+## Native commands and scope
+
+`/help` and `/echo` are upstream Koishi commands. `/register`, `/settings`,
+`/plugins`, `/rules`, `/applyrules`, subscriptions and reminders operate on a
+registered group under current permissions. Rule changes are reviewed
+proposals; cancellation and rollback previews do not silently activate a
+change. See [rules](M1-M4-USAGE.md) and [utilities](NATIVE-UTILITIES.md).
+
+Authorized AI supports `/ask`, `/digest`, `/translate`, `/brief` and explicit
+mention/reply handling. `/tasks`, `/task <id>` and `/cancel` are caller-scoped
+in the current group or private chat. `/models` lists only administrator
+bindings; `/model <id>` selects an allowed binding, never a user endpoint/key.
+`/newchat` and `/reset` clear the caller's current bounded conversation while
+retaining task history. Context is bound to the current actor, chat and
+audience; an audience switch starts empty context. Translation, digest and
+rule interpretation do not inherit ordinary assistant history. Every task
+still creates a fresh Docker sandbox; conversations do not reuse its HOME.
+
+File commands operate on the caller's input and available current/quoted
+attachments; they do not browse host files or old chat history. Successful
+Sandbox AI can return the fixed bounded `result.md` file downloaded from its
+sandbox before cleanup. Its bytes are transient; SQLite stores only artifact
+metadata. Current recipient authorization and Telegram delivery receipts are
+separate from Harness completion. See [AI and files](NATIVE-AI-FILES.md).
+
+Media, image/PDF conversion, Markdown rendering and manual site parsing remain
+explicit optional host features. See [images](NATIVE-IMAGES.md) and
+[site parser](NATIVE-SITE-PARSER.md). Installed upstream functionality is
+reused; a representative accepted path does not establish every platform,
+codec, plugin or provider combination.
+
+## Persistent configuration and plugin maintenance
+
+`DATA_DIR` holds `groupweave.sqlite` (schema 4: group/business state, tasks,
+model choices and bounded conversations), `koishi.db` (native Koishi data),
+and `plugins/` (managed Loader YAML, npm manifest/lockfile, installed packages
+and npm cache). They share one trusted application boundary; same-process
+plugins can access it. Preserve the whole directory/Compose volume.
+
+On first startup the selected seed YAML is copied once to
+`DATA_DIR/plugins/koishi.yml`. Subsequent starts use the managed file and do
+not overwrite online changes from the seed. Selecting the minimal preset on
+an existing data volume therefore does not reset its plugins. Review the
+managed configuration explicitly if changing an existing deployment.
+
+Platform administrators can use the authenticated management page/API to
+install an exact npm plugin version and enable/disable its ordinary Loader
+configuration. Requests use the existing platform session and CSRF checks;
+this is Koishi's native Installer service, without a separate Console login
+or server. Installs use the writable `plugins/` directory, `ignore-scripts`
+and omitted peer installation. There is one maintenance mutation at a time.
+New dependencies can require a restart, particularly when replacing an
+already-loaded built-in package. Check the restart-required signal and
+installation/load failure before claiming the plugin is active.
+
+Review package compatibility, configuration, network use and delivery scope
+before installation. Lifecycle-script-dependent packages need an explicit
+image-maintenance path. Plugins execute as trusted application code; there is
+no untrusted-plugin sandbox or new package runtime. Keep required `http`,
+`database-sqlite`, `help` and `echo` entries. Installed plugin availability is
+separate from platform/group business-feature authorization.
+
+Offline image maintenance remains supported: update an exact dependency and
+lockfile, review the ordinary YAML, then build/deploy the image. Avoid changing
+the seed YAML while assuming it will overwrite an existing managed file.
+Restart retains configuration and history. Interrupted pending/running tasks
+are marked blocked with unknown prior execution, without automatic replay.
 
 ## Docker Compose
 
-The native override uses the existing image and data volume. Set
-`PUBLIC_ORIGIN` in `.env.local` to the exact public HTTPS origin without a path,
-then run:
+Follow [checkout setup](REPOSITORY-SETUP.md#compose) from the repository root.
+Set the private environment file's `PUBLIC_ORIGIN` to the exact HTTPS origin
+served by your existing proxy. Set `KOISHI_CONFIG_PATH=./koishi.personal.yml`
+to use either copied preset; Compose mounts it read-only at `/app/koishi.yml`
+and preserves managed changes in the data volume. Missing bind sources fail.
 
 ```sh
-docker compose --env-file .env.local -f compose.yaml -f compose.koishi.yaml up -d --build
+docker compose -p groupweave --env-file examples/groupweave/.env.local \
+  -f examples/groupweave/compose.yaml \
+  -f examples/groupweave/compose.koishi.yaml config --quiet
+docker compose -p groupweave --env-file examples/groupweave/.env.local \
+  -f examples/groupweave/compose.yaml \
+  -f examples/groupweave/compose.koishi.yaml up -d --build
+# Replace this Host with the exact host[:port] from PUBLIC_ORIGIN:
+curl --fail -H 'Host: bot.example.com' http://127.0.0.1:4318/api/health
 ```
 
-The base Compose file binds the container port to loopback; put a TLS reverse
-proxy in front for remote access. The override inherits `HOST=0.0.0.0` inside
-the container and requires `PUBLIC_ORIGIN` for the management API. The browser
-UI still requires a Telegram Mini App launch and valid `initData`.
+Base Compose exposes only loopback. Native mode is not the legacy preview even
+though both use the same application image. For a separate preview use a
+separate project/volume. An exact public Host header is required when
+`PUBLIC_ORIGIN` is set; a local health probe with a different Host is rejected.
+The public page still does not grant a management session.
 
-### deployment host HTTPS status (2026-10-27)
+Add `compose.koishi.render.yaml` for sandboxed Chromium, 768 MiB and 256 PIDs.
+It preserves `no-new-privileges` and the reviewed user-namespace seccomp
+profile; no `--no-sandbox` escape is provided. Browser cache/config live in
+writable tmpfs. A host lacking the required namespace support must leave
+rendering disabled or report that deployment gap.
 
-The existing deployment host serves `groupweave.example.invalid` through its
-configured HTTPS reverse proxy. ACME DNS
-validation issued and installed the certificate in reverse proxy's existing
-certificate store; the local autocert configuration and route to
-`127.0.0.1:<application-port>` were added, and HTTPS was validated without restarting the
-reverse proxy container. The renewal hook writes the reverse proxy config and reloads
-reverse proxy; it does not call a certificate-renewal API.
+### Docker AI prerequisites
 
-The Bot now uses `PUBLIC_ORIGIN=https://groupweave.example.invalid`. Its private-chat
-menu opens the management Mini App. AyuGram authenticated the real Telegram
-user and displayed registered acceptance group A with its existing v3 rules.
-Public page/health return 200; `/api/me` without a session returns 401.
-The application container was recreated for these changes; the shared reverse proxy
-process was hot-reloaded. This verifies entry and login, not every management
-workflow or the full M1/M2 milestones.
+`compose.koishi.sub2api.yaml` is a **Linux host-network** overlay for an
+already installed OpenShell **0.1.3** gateway and Docker driver. It does not
+start those services, issue certificates, create credentials or install a
+second sandbox backend. It installs the host OpenSSH client and mounts only
+the reviewed Linux native CLI, private provider JSON and client mTLS bundle.
+Do not mount the Docker socket or a user's HOME into the Bot/workload.
 
-The preset also loads native RSS and schedule plugins; group administrators
-can use the [utilities guide](NATIVE-UTILITIES.md) for subscriptions and
-reminders. The native welcome event uses the existing platform/group switches.
+Before enabling it:
 
-The third batch adds group `/ask`, `/digest`, explicit mention/reply handling,
-confirmation and long replies; `ENABLE_AI=1` requires an existing protected
-`SANDBOX_AI_BINDING_MODULE`. The native host uses Docker/DSH exclusively for
-these AI commands. Platform and group switches must also be enabled.
-The fourth batch adds owner-scoped private AI with confirmation and cancellation.
-Private scopes use `tg-dm:<user>` and never appear as groups. Single-turn AI still
-needs the platform switch; it does not create or read conversation history.
-The fifth batch adds `/translate <language> <text>` under assistant permission,
-and group `/brief <text>`: existing link-cleanup code followed by one Docker
-model request. `/brief` requires both link-cleaner and link-brief enabled; it
-explains supplied text and URLs without fetching web pages.
+1. Build/import the [DSH workload image](../deploy/dsh/README.md) into the
+   Docker image store actually used by the existing driver, on its matching
+   architecture. Record its immutable image ID and Node/DSH versions. The
+   current recipe pins Node 26.13.0 and DSH 0.2.0-rc.2 and includes the required
+   fixed result exporter. An older image without that exporter fails closed.
+2. Configure the native gateway's TLS/mTLS user authentication, matching
+   Docker-driver CA/HTTPS settings and supervisor JWT support. Keep it on
+   loopback. Validate protected RPC denial without a certificate as well as
+   success with the trusted client; public health alone is insufficient.
+   Follow the [binding's native mTLS instructions](../integrations/sub2api-openshell/README.md#native-gateway-authentication-openshell-013).
+3. Prepare protected provider JSON using the binding's exact fields. It
+   contains the fixed model, real upstream credential, immutable workload
+   image, loopback meter port and HTTPS gateway URL. Set `gatewayTls` paths
+   to `/run/groupweave/openshell/ca.crt`, `tls.crt`, `tls.key` respectively.
+   The CLI files must be regular non-symlink files, owned by root or the Bot
+   UID, mode 0600 or stricter **and readable by the Bot UID**. For the default
+   image that UID is 1000. Mount only the CA certificate plus client
+   certificate/key; never include the CA signing key, server key or gateway
+   JWT signing key. Keep the source bundle outside task-cleanup roots.
+4. Set `OPENSHELL_CLI_PATH`, `GROUPWEAVE_MODEL_CONFIG_PATH` and
+   `OPENSHELL_CLIENT_BUNDLE_PATH` to their reviewed host sources in the private
+   Compose env file. `PUBLIC_ORIGIN` still describes the management UI. Keep
+   the provider JSON and parent directories protected; make the file readable
+   by UID 1000 without making it public. Local Node instead exports its own
+   absolute `GROUPWEAVE_MODEL_CONFIG` path. The shipped `deployment.mjs`
+   wrapper is the trusted module, not a value generated from user input.
+5. Ensure the existing driver's `host.openshell.internal:<meterPort>` route
+   reaches the Bot's loopback admission listener in that Linux network context.
+   The sandbox can reach only the fixed admission route; the real upstream
+   key stays in the trusted host. Do not publicly expose the meter port or
+   weaken authentication to make a probe pass. A free UI port alone does not
+   establish this route.
 
-Files work without AI. `ENABLE_MEDIA=1` loads the pinned upstream video-to-GIF
-plugin and FFmpeg service in the native host. It uses `FFMPEG_PATH` / `FFPROBE_PATH`
-or `ffmpeg` / `ffprobe` from PATH; the Compose override builds system FFmpeg into the same application
-image. No runtime binary download is performed. The `/v2g` command supports
-upload, quoted video, or direct video URL. Fixed `/convert mp4|mp3|m4a|small`,
-`/clip`, `/mediainfo`, and `/cancelmedia` operate on current or quoted attachments.
-The new cancellation command does not cancel upstream `/v2g`. Sandbox file
-export remains unfinished. See [AI and files](NATIVE-AI-FILES.md) for usage,
-known media limits, and the distinction between local evidence and real delivery.
+Append `-f examples/groupweave/compose.koishi.sub2api.yaml` after the base and
+native files (and after render when used), then inspect `config --quiet`
+before `up -d --build`. This overlay resets container port publishing and
+binds the UI to host loopback. Proxy it through the existing HTTPS service.
+Use the trusted native CLI identity to list owned sandboxes and task
+providers/profiles before maintenance; drain active work and verify cleanup.
+Never delete another workspace's resources or restart other host services as
+part of this recipe. A missing gateway, credentials, driver image or callback
+route is a deployment gap, not an invitation to fall back to host execution.
 
-The sixth batch adds fixed `/image jpg|png|webp [size] [quality]` and a caller-scoped
-`/imgpdf start` → upload images → `/imgpdf done` flow, using Sharp and pdf-lib.
-Optional `/mdimg` uses the upstream Markdown service and Puppeteer. It requires
-`ENABLE_RENDER=1` and a working browser (`RENDER_BROWSER_PATH` may specify it).
-Startup refuses to claim readiness if the browser/service failed. Chromium's
-sandbox stays enabled. Local Docker Markdown startup and rendering passed on
-2026-10-26 after the opt-in seccomp/user-namespace profile and 256 PID limit
-were applied. Rendering remains disabled in the default Compose; see the
-[Markdown deployment instructions](NATIVE-IMAGES.md). The deployment host native Bot
-subsequently returned real Telegram images including code, KaTeX, and Mermaid.
-Its render overlay uses 768 MiB and 256 PID after the combined workload exceeded
-512 MiB. Real private ask/digest/translation and authorized group ask also passed;
-see the eleventh native acceptance batch and `compose.koishi.sub2api.yaml`.
+## Upgrade and recovery
 
-`/parse` is optional and manual-only. The direct mode uses the image's pinned
-`yt-dlp` 2026.10.26 at `/opt/site-parser/bin/yt-dlp` when
-`ENABLE_SITE_PARSER=1`; optional read-only Bilibili and Douyin cookie-file
-bindings are separate. A remote parser API is an explicit alternative and is
-selected only when both `SITE_PARSER_API_URL` and `SITE_PARSER_API_KEY` are
-configured. No implicit public API or automatic group listener is enabled.
-Real Bilibili/Douyin end-to-end results are still being tested; see
-[site parser](NATIVE-SITE-PARSER.md).
+See the [preservation and rollback procedure](REPOSITORY-SETUP.md#upgrade-preserve-and-roll-back).
+Keep schema 4, both databases and `plugins/` across upgrades; record immutable
+container/image IDs and inspect logs by the captured ID. Health, submission,
+model completion and Telegram delivery are distinct evidence. A failed health
+probe does not authorize replacing current data with a stale database.

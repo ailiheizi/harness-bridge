@@ -20,10 +20,16 @@ protected RPC returned code 16 (denied); its credentialed equivalent returned
 0 (success). All three Bot UID 1000 native CLI list checks returned 0 (success).
 The final command fix and DSH export image are deployed; health, Telegram and
 executor connections are healthy with zero restarts and the current database
-preserved. This does not close M6. M5's reusable deployment recipe/documentation
-and M6's final six negative cases remain unfinished; the default configuration
-feature itself was already delivered under AIL-98. See the
-[dated delivery record](../examples/groupweave/docs/DELIVERY-20261031.md).
+preserved. This initial deployment alone did not close M6. M5's deployment
+recipe/documentation and M6's six bounded negative cases were then completed;
+see the [closeout record](../examples/groupweave/docs/CLOSEOUT-20261031.md).
+Fresh-checkout installs/build/native default/minimal startup, five Compose
+configurations and standalone archive consumption passed. The sole clean
+Docker build attempt timed out at DockerHub token retrieval and remains
+unverified. Six negative cases combined signed native-mode application APIs,
+real local plugin/file seams, and two actual OpenShell/Docker sandboxes with
+cleanup. No model was invoked and production egress was not tested. These
+scoped passes do not establish universal isolation or prompt-injection resistance.
 
 Keep reproducible checks in this repository separate from recorded tests on a
 private target. The package is source version `0.1.6-preview.1`; the current

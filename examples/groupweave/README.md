@@ -9,8 +9,8 @@ container or a resident Agent per group.
 
 ## Current case
 
-As of the 2026-10-29 acceptance history, the native Koishi bot has completed
-representative real Telegram paths for:
+M1–M4 are implemented and deployed. Representative real Telegram evidence
+through 2026-10-31 includes:
 
 - Single-turn group `/brief`: the bot's link-cleanup code prepared the input,
   then an existing real provider explained the supplied text and code result.
@@ -23,6 +23,11 @@ representative real Telegram paths for:
 - Media: representative Telegram transfers succeeded for PNG/WebP images,
   PDFs, M4A, and small MP4. `/mediainfo` reads quoted media metadata. These
   results do not establish every codec, input, or cancellation combination.
+
+The 2026-10-31 delivery also records a downloaded and checked 23-byte Markdown
+result, a same-DM follow-up after restart using prior context, and a real
+confirmed rules proposal and rollback. See [feature catalog](docs/FEATURE-CATALOG.md)
+for commands, dependencies, defaults, and evidence scope.
 
 | Capability | Entry point | Conditions and limits |
 | --- | --- | --- |
@@ -40,15 +45,17 @@ representative real Telegram paths for:
 
 ## Current limits
 
-The 2026-10-31 source adds online npm/Loader maintenance in the existing
-platform panel, group-native tool switches, reviewed AI configuration proposals,
-bounded personal conversations, model presets and task history. Successful AI
-turns can return one fixed Markdown result file. See [the usage guide](docs/M1-M4-USAGE.md).
-These additions require the updated application and DSH image; source checks
-and deployment/Telegram delivery receipts remain separate. A successful Mini App login does not establish all
-management workflows. Site parsing is best-effort. The anti-ad adapter is
-present, but its original private classifier implementation is not included in
-this public snapshot.
+Online plugin maintenance, bounded artifact return, group rules and personal
+conversation/task features are part of the deployed M1–M4 case. The live model
+set currently contains only `default`; additional profile selection was checked
+locally, not verified with multiple live models. `/ask` uses the requester's
+current bounded context, not the group's full message history; changing
+audience clears that context. Site parsing is anonymous best-effort. The
+anti-ad adapter's original private classifier is not included, so scanning is
+unavailable by default. M5 deployment documentation/recipes and M6's six bounded
+negative cases are complete; see the [closeout record](docs/CLOSEOUT-20261031.md)
+for executed layers and limits, including the clean Docker build's registry
+network timeout. This is not exhaustive plugin or security certification.
 
 This repository packages the working Bot case and its Harness binding. Broader
 framework extraction is deferred; the portable method and execution boundary

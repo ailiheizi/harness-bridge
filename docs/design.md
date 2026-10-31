@@ -87,12 +87,13 @@ contract and validation. OpenShell + Docker is the only isolation path.
 
 The API does not provide durable tasks, cross-process scheduling, provider
 routing, hard model budgets, accounting, business tools or platform delivery.
-The [GroupWeave example](../examples/groupweave/README.md) supplies a real host
-case with those application responsibilities. Known gaps include unverified
-deployment of online Console plugin installation and end-to-end artifact
-delivery; see the example's
-[TODO](../examples/groupweave/docs/TODO.md) and
-[acceptance record](../examples/groupweave/docs/ACCEPTANCE-20261022-NATIVE.md).
+The [GroupWeave example](../examples/groupweave/README.md) supplies host-owned
+identity, configuration, persistence, task state and delivery. Its current
+deployment includes native plugin maintenance and fixed Markdown artifact
+delivery; see the [dated delivery record](../examples/groupweave/docs/DELIVERY-20261031.md)
+and [feature catalog](../examples/groupweave/docs/FEATURE-CATALOG.md).
+These application features do not become library responsibilities or prove
+arbitrary-plugin isolation, hard monetary budgets or provider failover.
 The smaller [Koishi example](../examples/koishi/README.md) remains a focused
 consumer of the library. See [architecture](architecture.md),
 [quickstart](QUICKSTART.md), [validation](validation.md), and

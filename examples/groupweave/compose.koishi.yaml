@@ -37,5 +37,15 @@ services:
       BILIBILI_COOKIES_FILE: "${BILIBILI_COOKIES_FILE:-}"
       DOUYIN_COOKIES_FILE: "${DOUYIN_COOKIES_FILE:-}"
       SANDBOX_AI_BINDING_MODULE: "${SANDBOX_AI_BINDING_MODULE:-}"
+      # Local Node startup selects KOISHI_CONFIG directly. Compose instead
+      # mounts the reviewed host YAML at this fixed application path.
+      KOISHI_CONFIG: /app/koishi.yml
       MAX_ACTIVE_TASKS: "${MAX_ACTIVE_TASKS:-2}"
       TZ: "${TZ:-Asia/Shanghai}"
+    volumes:
+      - type: bind
+        source: "${KOISHI_CONFIG_PATH:-./koishi.yml}"
+        target: /app/koishi.yml
+        read_only: true
+        bind:
+          create_host_path: false

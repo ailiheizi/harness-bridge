@@ -20,6 +20,23 @@ npm test
 In another application, add `"@actweave/harness-bridge": "file:../harness-bridge"`
 to its dependencies (adjust the path to this checkout), then run `npm install`.
 The included Koishi example uses `file:../..` and requires no registry release.
+To keep the consumer independent of the checkout layout, package the existing
+library rather than copying the Bot:
+
+```sh
+# In the source checkout; this emits actweave-harness-bridge-0.1.6-preview.1.tgz
+npm pack --ignore-scripts
+# In your own application directory; adjust the absolute checkout path
+npm install --ignore-scripts /absolute/path/harness-bridge/actweave-harness-bridge-0.1.6-preview.1.tgz
+```
+
+The archive contains the Bridge entrypoint, runtime, types, README and license;
+it does not bundle GroupWeave, Docker, OpenShell, DSH or private deployment
+configuration. Package version `0.1.6-preview.1` was installed from its archive
+into a separate temporary consumer on 2026-10-31, then imported and called
+through one synthetic native-CLI completion/cleanup example. This checks
+packaging, not a new real-provider run. The package remains unpublished to npm.
+
 Create a private host configuration module. Keep native
 credentials in OpenShell's trusted configuration; never place them in the
 request, prompt, image, or arbitrary environment variables.
@@ -73,6 +90,11 @@ OpenShell providers and does not contain credentials. `dsh.patchPath` must be
 an absolute path to the host-prepared patch; optional `skillRoot` selects the
 remote root where an optional ordinary Skill is uploaded. `limits` may set
 positive integer `totalTimeoutMs`, `commandTimeoutMs`, and `maxOutputBytes`.
+Optional `dsh.downloadResult: true` collects only `/workspace/exports/result.md`,
+a regular UTF-8 file of at most 64,000 bytes matching the verified final text.
+The workload must include the existing [DSH completion observer](../examples/groupweave/deploy/dsh/README.md).
+The host receives bytes in `result.artifact` after result authorization; it owns
+any persistence or platform delivery.
 
 The bridge fixes the native CLI command shape, path/environment inheritance,
 and DSH invocation. It does not accept arbitrary shell strings or caller

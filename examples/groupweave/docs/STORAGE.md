@@ -6,7 +6,7 @@
 
 文件为 `DATA_DIR/groupweave.sqlite`；没有 `dataDir` 时仅为内存演示。每个文件只能由一个 Store 持有。连接先设置 SQLite `locking_mode=EXCLUSIVE`，取得锁后才迁移、播种和恢复，随后使用 WAL。第二个连接或第二个 Node 进程的 Store 会得到 SQLite BUSY 并停止；构造失败关闭自己的句柄，不能把第一个实例的在途任务标记为未知。关闭连接后新实例才可以成为持有者。这是当前单进程应用的原生数据库约束，不提供多副本、共享网络文件系统或跨数据库一致性承诺。[SQLite 的锁模式与 WAL 规则](https://www.sqlite.org/pragma.html#pragma_locking_mode)
 
-当前普通应用 schema 为 `user_version=3`，`application_id=0x47575031`。此前未标版本的预览库在一个 SQLite 事务中增补列、表和索引，原配置、提案及重复键保留；结构不兼容、其他应用标识和未来版本拒绝打开，不猜测转换。迁移和备份检查固定表与列、JSON 可解析性、索引与对象的身份/作用域/操作者/受众一致性、外键、`integrity_check`。这些是应用自己的数据版本，不是跨 Harness 协议。[SQLite 的应用版本与完整性检查](https://www.sqlite.org/pragma.html#pragma_user_version)
+当前普通应用 schema 为 `user_version=4`，`application_id=0x47575031`。此前未标版本的预览库在一个 SQLite 事务中增补列、表和索引，原配置、提案及重复键保留；结构不兼容、其他应用标识和未来版本拒绝打开，不猜测转换。迁移和备份检查固定表与列、JSON 可解析性、索引与对象的身份/作用域/操作者/受众一致性、外键、`integrity_check`。这些是应用自己的数据版本，不是跨 Harness 协议。[SQLite 的应用版本与完整性检查](https://www.sqlite.org/pragma.html#pragma_user_version)
 
 v3 新增 `private_scopes(id,actor_id,version,json)`。`tg-dm:<正用户ID>` 只归对应
 `tg-user:<用户ID>`，不插入 `groups` 或 `memberships`，不出现在群列表。私人
@@ -14,9 +14,14 @@ v3 新增 `private_scopes(id,actor_id,version,json)`。`tg-dm:<正用户ID>` 只
 核验本人。现有任务容量、正文保留上限、取消与备份覆盖私人任务。首批配置固定，
 不能通过群规则接口编辑。
 
-v2 库启动时原地事务升级，不丢弃既有群、任务和重复键。恢复 v2 备份时先复制到
+v4 在现有库新增有界 conversations 表，按群/私聊、本人及受众保存最多12条/24KB
+上下文与可信模型 ID；重置/受众变化增加 revision，迟到旧任务不能写回旧历史。
+数据库只保存固定 AI 文件的元数据；可领取文件是短期内存对象，重启后不可恢复。
+
+旧库启动时原地事务升级，不丢弃既有群、任务和重复键。恢复兼容旧备份时先复制到
 临时库，在临时库上迁移和验证，再导入目标；来源备份保持原样。旧应用不能打开
-升级后的 v3 库，回滚应使用升级前的备份，而不是仅替换应用代码。
+升级后的 v4 库。不能自动把旧代码与新库混用，也不能为了回滚代码而自动恢复
+升级前快照、丢掉升级后的任务与投递记录；先保留当前数据并核对兼容性与外部副作用。
 
 ## 真实身份与预览身份
 

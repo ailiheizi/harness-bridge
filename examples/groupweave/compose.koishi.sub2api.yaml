@@ -1,4 +1,5 @@
-# Linux deployment: an existing OpenShell Docker gateway listens on host loopback.
+# Linux deployment: an existing OpenShell 0.1.3 Docker gateway uses native mTLS
+# on host loopback. Prepare its server/driver config and client bundle first.
 # Include after compose.yaml and compose.koishi.yaml. Gateway lifecycle stays external.
 services:
   groupweave:
@@ -14,5 +15,21 @@ services:
       SANDBOX_AI_BINDING_MODULE: /app/integrations/sub2api-openshell/deployment.mjs
       GROUPWEAVE_MODEL_CONFIG: /run/groupweave/provider.json
     volumes:
-      - "${OPENSHELL_CLI_PATH:?Set the reviewed native CLI path}:/opt/openshell:ro"
-      - "${GROUPWEAVE_MODEL_CONFIG_PATH:?Set the private deployment JSON path}:/run/groupweave/provider.json:ro"
+      - type: bind
+        source: "${OPENSHELL_CLI_PATH:?Set the reviewed Linux OpenShell 0.1.3 CLI path}"
+        target: /opt/openshell
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${GROUPWEAVE_MODEL_CONFIG_PATH:?Set the private deployment JSON path}"
+        target: /run/groupweave/provider.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${OPENSHELL_CLIENT_BUNDLE_PATH:?Set the protected native mTLS client bundle directory}"
+        target: /run/groupweave/openshell
+        read_only: true
+        bind:
+          create_host_path: false
