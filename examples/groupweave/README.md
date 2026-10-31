@@ -54,8 +54,10 @@ audience clears that context. Site parsing is anonymous best-effort. The
 anti-ad adapter's original private classifier is not included, so scanning is
 unavailable by default. M5 deployment documentation/recipes and M6's six bounded
 negative cases are complete; see the [closeout record](docs/CLOSEOUT-20261031.md)
-for executed layers and limits, including the clean Docker build's registry
-network timeout. This is not exhaustive plugin or security certification.
+for executed layers and limits. The [follow-up](docs/DEPLOYMENT-FOLLOWUP-20261031.md)
+completes Web rule-history rollback, optional Compose model profiles and a clean
+default Docker build/start. Optional full system-dependency rebuilds remain a
+separate coverage limit. This is not exhaustive plugin or security certification.
 
 This repository packages the working Bot case and its Harness binding. Broader
 framework extraction is deferred; the portable method and execution boundary

@@ -46,6 +46,7 @@ Markdown 沙箱产物。使用方式见[指南](examples/groupweave/docs/M1-M4-U
 完整命令、版本、启用条件与已验证结果见[功能速查](examples/groupweave/docs/FEATURE-CATALOG.md)，
 部署与升级见[部署说明](examples/groupweave/docs/REPOSITORY-SETUP.md)。
 [M5/M6 收尾](examples/groupweave/docs/CLOSEOUT-20261031.md)记录了部署复用与六个有界数据反例的结果和未测范围。
+[后续补齐](examples/groupweave/docs/DEPLOYMENT-FOLLOWUP-20261031.md)完成了 Web 规则历史回滚、可选模型配置接线及默认 Docker 镜像完整构建/启动。
 平台插件属于可信代码。源码实现、目标部署与真实 TG 交付分别记录，功能更新本身不等于线上验收通过。见其
 [TODO](examples/groupweave/docs/TODO.md)、[当期交付记录](examples/groupweave/docs/DELIVERY-20261031.md)
 和[安全说明](SECURITY.md)。

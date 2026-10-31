@@ -24,9 +24,15 @@ preserved. This initial deployment alone did not close M6. M5's deployment
 recipe/documentation and M6's six bounded negative cases were then completed;
 see the [closeout record](../examples/groupweave/docs/CLOSEOUT-20261031.md).
 Fresh-checkout installs/build/native default/minimal startup, five Compose
-configurations and standalone archive consumption passed. The sole clean
-Docker build attempt timed out at DockerHub token retrieval and remains
-unverified. Six negative cases combined signed native-mode application APIs,
+configurations and standalone archive consumption passed. The initial clean
+Docker build attempt timed out at DockerHub token retrieval. A subsequent
+clean archive of `a105912` completed the unchanged public Dockerfile with its
+default build flags, and a nonroot/read-only native container passed HTTP health
+and initialization checks on Node 26.13.0 with TG/AI off. The optional full
+system-dependency rebuild remains unverified. The
+[follow-up record](../examples/groupweave/docs/DEPLOYMENT-FOLLOWUP-20261031.md)
+also records the deployed Web rule-history fix and optional Compose model
+profile wiring. Six negative cases combined signed native-mode application APIs,
 real local plugin/file seams, and two actual OpenShell/Docker sandboxes with
 cleanup. No model was invoked and production egress was not tested. These
 scoped passes do not establish universal isolation or prompt-injection resistance.

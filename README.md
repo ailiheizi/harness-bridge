@@ -62,6 +62,9 @@ commands, versions, conditions and recorded outcomes; the
 [deployment guide](examples/groupweave/docs/REPOSITORY-SETUP.md) covers the complete case.
 The [M5/M6 closeout](examples/groupweave/docs/CLOSEOUT-20261031.md) records
 deployment reuse and six bounded data-boundary cases, including explicit untested limits.
+The [follow-up](examples/groupweave/docs/DEPLOYMENT-FOLLOWUP-20261031.md) adds
+usable Web rule history, optional Compose model profiles and verified default
+Docker image construction/startup.
 The application record distinguishes implementation, deployment and real
 Telegram evidence; a source change alone is not a live delivery receipt. See its [TODO](examples/groupweave/docs/TODO.md),
 [current delivery](examples/groupweave/docs/DELIVERY-20261031.md), and
