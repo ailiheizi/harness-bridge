@@ -57,17 +57,37 @@ export function SessionTools({ groupId, request }: { groupId: string; request: R
   </section>;
 }
 
-export function RuleHistory({ groupId, request, onPreview }: { groupId: string; request: Request; onPreview(proposal: Proposal): void }) {
-  const [id, setId] = useState('');
+export function RuleHistory({ groupId, request, onPreview, disabled = false }: { groupId: string; request: Request; onPreview(proposal: Proposal): void; disabled?: boolean }) {
+  const [history, setHistory] = useState<Proposal[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  return <section className="panel"><h2>恢复之前的规则</h2><p>输入本人在本群已启用的提案 ID，生成恢复之前配置的预览；确认后才会生效。提案 ID 可从群内规则预览消息取得。</p>
-    <label className="field">已启用的本群提案 ID<input value={id} onChange={event => setId(event.target.value)} disabled={busy}/></label>
-    <button className="button secondary" disabled={busy || !/^[a-zA-Z0-9-]{1,48}$/.test(id)} onClick={async () => {
-      setBusy(true); setError('');
-      try { const previous = await request<Proposal>(`/proposals/${encodeURIComponent(id)}`); if (previous.groupId !== groupId) throw new Error('请使用当前群的提案 ID。'); const proposal = await request<Proposal>(`/proposals/${encodeURIComponent(id)}/rollback`, {}); onPreview(proposal); }
-      catch (failure) { setError((failure as Error).message); }
-      finally { setBusy(false); }
-    }}>预览回滚</button>{error && <p role="alert">{error}</p>}
+  const mounted = useRef(false);
+  async function refresh() {
+    const value = await request<{ proposals: Proposal[] }>(`/groups/${groupId}/proposals`);
+    if (mounted.current) setHistory(value.proposals.filter(proposal => proposal.status === 'active'));
+  }
+  useEffect(() => {
+    mounted.current = true;
+    void refresh().catch(failure => { if (mounted.current) setError((failure as Error).message); });
+    return () => { mounted.current = false; };
+  }, [groupId, request]);
+  async function act(operation: () => Promise<void>) {
+    setBusy(true); setError('');
+    try { await operation(); }
+    catch (failure) { if (mounted.current) setError((failure as Error).message); }
+    finally { if (mounted.current) setBusy(false); }
+  }
+  return <section className="panel"><div className="section-heading"><h2>本人本群的规则历史</h2><button className="text-button" disabled={busy || disabled} onClick={() => void act(refresh)}>刷新规则历史</button></div>
+    <p>选择一次已启用的调整，预览恢复该次调整前的配置。刷新页面后仍可找回；回滚也需要再次确认，并使用当前版本检查。</p>
+    {!history.length ? <p>本人在本群还没有保留的已启用提案。</p> : <div className="table-wrap"><table><thead><tr><th>生效版本 / 时间</th><th>调整内容</th><th>操作</th></tr></thead><tbody>{history.map(previous => <tr key={previous.id}>
+      <td><strong>规则 v{previous.baseVersion + 1}</strong><small>{new Date(previous.createdAt).toLocaleString('zh-CN')}</small><small>提案 ID：{previous.id}</small></td>
+      <td>{previous.changes.length ? previous.changes.join('；') : '配置保持原值'}</td>
+      <td><button className="button secondary" disabled={busy || disabled} onClick={() => void act(async () => {
+        const proposal = await request<Proposal>(`/proposals/${encodeURIComponent(previous.id)}/rollback`, {});
+        if (proposal.groupId !== groupId) throw new Error('提案不属于当前群。');
+        if (mounted.current) onPreview(proposal);
+      })}>预览回滚规则 v{previous.baseVersion + 1}</button></td>
+    </tr>)}</tbody></table></div>}{error && <p role="alert">{error}</p>}
+    <p className="inline-note">只列出当前群、本人创建且仍保留的生效提案，不显示其他管理员或其他群的规则草稿。</p>
   </section>;
 }

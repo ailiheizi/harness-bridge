@@ -91,6 +91,11 @@ immutable DSH image and private provider JSON as described in
 `compose.koishi.sub2api.yaml` last. It does not provision OpenShell or issue
 certificates. A model API key alone is insufficient.
 
+To expose additional approved model IDs, optionally append
+`compose.koishi.profiles.yaml` and set its protected host directory as described
+in [model profiles](M1-M4-USAGE.md#会话任务与模型). This reuses the existing loader;
+the default configuration still exposes only its configured default binding.
+
 ## Upgrade, preserve and roll back
 
 Before upgrading, record the exact image IDs, reviewed YAML, Compose project

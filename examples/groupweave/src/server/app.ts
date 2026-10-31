@@ -202,6 +202,10 @@ export async function buildApp(options: AppOptions = {}) {
   });
   app.get<{ Params: { id: string } }>('/api/groups/:id', async request => ({ group: await groupFor(request, request.params.id), plugins: store.plugins() }));
 
+  app.get<{ Params: { id: string } }>('/api/groups/:id/proposals', async request => {
+    const group = await groupFor(request, request.params.id, true);
+    return { proposals: store.ownProposals(group.id, auth(request).personaId) };
+  });
   app.post<{ Params: { id: string } }>('/api/groups/:id/proposals', async request => actions.previewRules(auth(request).personaId, request.params.id, request.body));
   app.post<{ Params: { id: string } }>('/api/groups/:id/proposals/interpret', async request => {
     const session = auth(request);

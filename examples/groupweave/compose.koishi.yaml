@@ -37,6 +37,9 @@ services:
       BILIBILI_COOKIES_FILE: "${BILIBILI_COOKIES_FILE:-}"
       DOUYIN_COOKIES_FILE: "${DOUYIN_COOKIES_FILE:-}"
       SANDBOX_AI_BINDING_MODULE: "${SANDBOX_AI_BINDING_MODULE:-}"
+      # Optional absolute path to the trusted model profile JSON inside the
+      # container. The profiles overlay supplies a fixed read-only mount.
+      SANDBOX_AI_MODEL_PROFILES: "${SANDBOX_AI_MODEL_PROFILES:-}"
       # Local Node startup selects KOISHI_CONFIG directly. Compose instead
       # mounts the reviewed host YAML at this fixed application path.
       KOISHI_CONFIG: /app/koishi.yml

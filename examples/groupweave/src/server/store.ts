@@ -359,6 +359,11 @@ export class Store {
     return cancelled;
   }
   proposal(id: string): Proposal | undefined { return decode<Proposal>(this.db.prepare('SELECT json FROM proposals WHERE id=?').get(id) as Row | undefined); }
+  ownProposals(groupId: string, actorId: string): Proposal[] {
+    if (this.role(actorId, groupId) !== 'admin') return [];
+    return (this.db.prepare('SELECT json FROM proposals WHERE group_id=? AND creator_id=? ORDER BY rowid DESC LIMIT ?')
+      .all(groupId, actorId, this.retention.proposalsPerGroup) as Row[]).map(row => decode<Proposal>(row)!);
+  }
   activateProposal(id: string, actorId: string): { proposal: Proposal; conflict: boolean } | undefined {
     return this.transaction(() => {
       const proposal = this.proposal(id); if (!proposal || proposal.creatorId !== actorId || proposal.status === 'cancelled' || this.role(actorId, proposal.groupId) !== 'admin') return undefined;

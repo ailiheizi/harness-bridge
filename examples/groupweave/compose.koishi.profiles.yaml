@@ -1,0 +1,13 @@
+# Optional additional trusted model bindings. Prepare profiles.json in a
+# protected host directory and set SANDBOX_AI_MODEL_PROFILES_DIR.
+services:
+  groupweave:
+    environment:
+      SANDBOX_AI_MODEL_PROFILES: /run/groupweave/model-profiles/profiles.json
+    volumes:
+      - type: bind
+        source: "${SANDBOX_AI_MODEL_PROFILES_DIR:?Set the protected host directory containing profiles.json}"
+        target: /run/groupweave/model-profiles
+        read_only: true
+        bind:
+          create_host_path: false
