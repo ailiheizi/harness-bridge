@@ -18,6 +18,7 @@ type NativeSession = Session & { bot: TelegramApiBot };
 const require = createRequire(import.meta.url);
 const { h } = require('@koishijs/core') as typeof import('koishi');
 type RawMessage = {
+  text?: string; is_topic_message?: boolean;
   message_id?: number; date?: number; from?: { id?: number; is_bot?: boolean; first_name?: string; last_name?: string };
   chat?: { id?: number; type?: string; title?: string }; sender_chat?: unknown;
 };
@@ -97,6 +98,7 @@ export function installGroupCommands(ctx: Context, binding: TelegramBinding, opt
     register: '由本群管理员接入本群', settings: '查看本群配置和修改方法',
     'rules <text:text>': '预览本群规则变更', 'applyrules <id:string>': '确认本人创建的规则提案',
     'links <text:text>': '整理本次提供的链接', cancel: '取消本人在当前会话的进行中 AI/链接任务',
+    'keywords <text:text>': '本群关键词复核（本地规则，零模型调用）',
   };
   const register = (name: string, handler: (session: Session, input?: string) => Promise<void>) => {
     ctx.command(name, descriptions[name]).action(async ({ session }, input?: string) => {
@@ -139,6 +141,7 @@ export function installGroupCommands(ctx: Context, binding: TelegramBinding, opt
     if (imageHint(session)) rows.push(imageHint(session));
     rows.push(options.aiConfigured ? 'AI：本群启用后可 /ask、/digest、/translate、/scan（显式AI广告复核，非本地免费分类器）；/brief 需启用链接整理与说明及链接整理。本人确认第三方处理才执行；/cancel 取消本人任务。' : 'AI 尚未配置：需要平台管理员接入 Docker/DSH 执行入口。');
     rows.push('欢迎功能需平台在管理面板启用插件，再由本群管理员使用 /rules 开启欢迎；群配置不能自行安装平台插件。');
+    rows.push('本地关键词复核：平台与本群启用后 /keywords <文本>，不发送给模型、不自动处罚；配置和查看当前规则可用管理面板。');
     if (commands.get('rss')) rows.push('RSS：/rss <订阅链接> 添加；/rss -l 查看；/rss -r <订阅链接> 取消。');
     if (commands.get('rssdigest')) rows.push('订阅摘要：管理员 /rssdigest 每天09:00 先预览来源/期限/调用上限，再本人confirm启用；status/run/stop。按模型调用计费。');
     if (commands.get('remind')) rows.push('提醒：/remind <HH:mm 或 YYYY-MM-DD HH:mm> <文字>；/remind daily <HH:mm> <文字>；/remind every <间隔> <文字>；/remind list；/remind remove <编号>。');
@@ -195,6 +198,25 @@ export function installGroupCommands(ctx: Context, binding: TelegramBinding, opt
     } catch {
       await binding.recordDelivery(actor, task.id, 'unknown');
     }
+  });
+  register('keywords <text:text>', async session => {
+    const src = telegramCommandSource(session); if (!src || !binding.executeFeature) return;
+    if (src.raw.is_topic_message || session.channelId !== src.actor.groupId || session.guildId !== src.actor.groupId) return;
+    const match = /^\/keywords(?:@([a-z0-9_]+))?(?:\s+([\s\S]+))?$/iu.exec(src.raw.text ?? '');
+    if (!match || match[1] && match[1].toLowerCase() !== session.bot.user?.name?.toLowerCase()) return;
+    const input = match[2]?.trim();
+    if (!input) return send(session, '用法：/keywords <明确提交的文本>。仅本地规则建议，不自动处罚。');
+    const { actor, updateId, messageId } = src;
+    const task = await binding.executeFeature({ actor, input, featureId: 'antiad', audience: 'group', updateId, messageId,
+      idempotencyKey: `koishi-keywords:${updateId}:${messageId}` });
+    if (!await binding.claimDelivery(actor, task.id)) return;
+    if (binding.deliveryStillAuthorized && !binding.deliveryStillAuthorized(actor, task.id)) {
+      await binding.recordDelivery(actor, task.id, 'withheld'); return;
+    }
+    try {
+      const receipts = await session.send(h.text(task.status === 'succeeded' ? task.output : '关键词复核未完成，请查看功能开关和本人任务；未运行模型。'));
+      await binding.recordDelivery(actor, task.id, receipts?.length ? 'sent' : 'unknown');
+    } catch { await binding.recordDelivery(actor, task.id, 'unknown'); }
   });
   register('cancel', async session => {
     const raw = (session.event as Session['event'] & { _data?: RawUpdate })._data?.message;

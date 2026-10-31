@@ -35,7 +35,8 @@ export function installRssIntegration(ctx: Context, options: RssIntegrationOptio
           try {
             if (await options.allowBroadcast!(target.slice(0, separator), target.slice(separator + 1))) {
               // Collection failures must not suppress the existing RSS delivery.
-              try { await options.onItem?.(target.slice(0, separator), target.slice(separator + 1), String(content)); } catch {}
+              try { await options.onItem?.(target.slice(0, separator), target.slice(separator + 1), String(content)); }
+              catch { rssContext.logger('rss-digest').warn('RSS_DIGEST_CAPTURE_FAILED'); }
               allowed.push(target);
             }
           } catch { /* Policy unavailable: do not deliver this item. */ }

@@ -152,7 +152,10 @@ function describeChanges(before: GroupConfig, after: GroupConfig): string[] {
   if (before.welcomeText !== after.welcomeText) changes.push(`欢迎文本：${before.welcomeText || '默认'} → ${after.welcomeText || '默认'}`);
   if (before.antiadPromptThreshold !== after.antiadPromptThreshold) changes.push(`广告提示阈值：${before.antiadPromptThreshold ?? 0.55} → ${after.antiadPromptThreshold ?? 0.55}`);
   if (before.antiadActionThreshold !== after.antiadActionThreshold) changes.push(`广告高风险阈值：${before.antiadActionThreshold ?? 0.9} → ${after.antiadActionThreshold ?? 0.9}（仅建议，不自动处罚）`);
-  if (JSON.stringify(before.antiadStopwords ?? []) !== JSON.stringify(after.antiadStopwords ?? [])) changes.push(`本群广告关键词：${(before.antiadStopwords ?? []).length} → ${(after.antiadStopwords ?? []).length} 项`);
+  if (JSON.stringify(before.antiadStopwords) !== JSON.stringify(after.antiadStopwords)) {
+    const label = (words: string[] | undefined) => words === undefined ? '实现默认词表' : `${words.length} 项（显式配置）`;
+    changes.push(`本群广告关键词：${label(before.antiadStopwords)} → ${label(after.antiadStopwords)}`);
+  }
   if (!before.features.includes('assistant') && after.features.includes('assistant')) changes.push('群助手只处理每次确认的显式目标，不读取群历史；原生 Docker 入口为一次模型请求、无工具，工具能力以当前实际接入为准。');
   if (!before.features.includes('digest') && after.features.includes('digest')) changes.push('智能摘要只处理明确提交的文本；每次使用需确认将该次输入发送给已配置的第三方模型服务，不读取群历史。');
   if (!before.features.includes('link-brief') && after.features.includes('link-brief')) changes.push('链接整理与说明使用本群链接代码结果，再由 AI 解释；最多两次模型请求，每次使用需确认第三方处理。');
@@ -225,7 +228,7 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
     if (manager && group.role !== 'admin') return deny(403, 'MANAGER_REQUIRED', '只有本群管理员可以提出和启用配置。');
     return group;
   }
-  async function previewRules(actorId: string, groupId: string, value: unknown, interpretation?: { warnings: string[]; text: string }): Promise<Proposal> {
+  async function previewRules(actorId: string, groupId: string, value: unknown, interpretation?: { warnings: string[]; text: string }, restoreConfig?: GroupConfig): Promise<Proposal> {
     const group = await getGroup(actorId, groupId, true);
     const body = objectBody(value, ['text', 'baseVersion', 'config']);
     const baseVersion = positiveInteger(body.baseVersion, '配置版本', Number.MAX_SAFE_INTEGER);
@@ -233,7 +236,7 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
     const text = body.text === undefined || body.text === '' ? '' : requiredString(body.text, '规则文本', 2000);
     if (!text && body.config === undefined) return deny(400, 'EMPTY_PROPOSAL', '请填写规则或配置选项。');
     const patch = body.config === undefined ? {} : configPatch(body.config, new Set(store.plugins().map(plugin => plugin.id)));
-    const parsed = parseRules(text, { ...structuredClone(group.config), ...patch });
+    const parsed = parseRules(text, { ...structuredClone(restoreConfig ?? group.config), ...patch });
     if ((parsed.candidate.antiadPromptThreshold ?? 0.55) > (parsed.candidate.antiadActionThreshold ?? 0.9)) return deny(400, 'INVALID_CONFIG', '广告提示阈值不能高于高风险阈值。');
     const proposal: Proposal = {
       id: randomUUID(), groupId: group.id, creatorId: actorId, baseVersion,
@@ -359,7 +362,7 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
             ...(featureId === 'assistant' ? { allowLinkTool, ...(rememberConversation ? { conversation: conversation!.messages } : {}) } : {}),
             ...(featureId === 'antiad' ? { antiadPromptThreshold: group.config.antiadPromptThreshold ?? 0.55,
               antiadActionThreshold: group.config.antiadActionThreshold ?? 0.9,
-              antiadStopwords: [...(group.config.antiadStopwords ?? [])] } : {}) }),
+              ...(group.config.antiadStopwords === undefined ? {} : { antiadStopwords: [...group.config.antiadStopwords] }) } : {}) }),
           audience, authorized: true });
         const result = await boundedExecution(selectedExecutor, trustedRequest, () => { release!(); }, activeControllers, controller, callerSignal,
           isAi && (featureId === 'digest' || featureId === 'assistant' || featureId === 'link-brief') ? options.sandboxAiTimeoutMs ?? TASK_TIMEOUT_MS : TASK_TIMEOUT_MS);
@@ -445,7 +448,8 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
       const previous = store.proposal(id) ?? deny(404, 'NOT_FOUND', '找不到提案。');
       const group = await getGroup(actorId, previous.groupId, true);
       if (previous.creatorId !== actorId || previous.status !== 'active') return deny(409, 'ROLLBACK_INVALID', '只能从本人生效提案创建回滚预览。');
-      return previewRules(actorId, group.id, { config: { ...previous.before, nativeFeatures: previous.before.nativeFeatures ?? [...NATIVE_FEATURES] }, baseVersion: group.version });
+      // Restore the complete trusted snapshot so missing optional fields regain defaults.
+      return previewRules(actorId, group.id, { config: previous.before, baseVersion: group.version }, undefined, previous.before);
     },
     async ownTasks(actorId: string, groupId: string) { await getGroup(actorId, groupId); return store.ownTasks(groupId, actorId); },
     async ownTask(actorId: string, groupId: string, id: string) { await getGroup(actorId, groupId); return store.ownTasks(groupId, actorId).find(task => task.id === id) ?? deny(404, 'NOT_FOUND', '找不到本人当前会话任务。'); },

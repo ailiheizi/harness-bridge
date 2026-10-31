@@ -10,6 +10,7 @@ import { createGroupActions } from '../src/server/actions.js';
 import { createTelegramBinding } from '../src/server/telegram-binding.js';
 import { installGroupCommands, verifyTelegramMember } from '../src/server/koishi-business.js';
 import { createKoishiRuntime } from '../src/server/koishi-runtime.js';
+import { keywordReview } from '../src/server/keyword-review.js';
 
 const require = createRequire(import.meta.url);
 const { Bot } = require('@koishijs/core') as typeof import('koishi');
@@ -48,13 +49,14 @@ class FakeTelegramBot extends Bot<Context> {
   }
 }
 
-async function fixture(t: test.TestContext) {
+async function fixture(t: test.TestContext, keywords = false) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'koishi-business-'));
   const configPath = path.join(dir, 'koishi.yml');
   await writeFile(configPath, 'plugins: {}\n');
   const store = new Store();
   const roles = new Map<string, string>([[`${chatId}/${userId}`, 'administrator']]);
   const actions = createGroupActions(store, { executor: async request => ({ output: `LINKS:${request.input}`, modelCalls: 0 }),
+    ...(keywords ? { antiadExecutor: keywordReview } : {}),
     async refreshRole(actorId, groupId) {
       const role = await verifyTelegramMember(bot!, groupId.slice(3), actorId.slice('tg-user:'.length));
       try { store.syncTelegramMember(groupId.slice(3), actorId.slice('tg-user:'.length), role); }
@@ -73,8 +75,8 @@ async function fixture(t: test.TestContext) {
   } });
   await runtime.start();
   bot = runtime.app.bots.find(value => value.adapterName === 'telegram') as FakeTelegramBot;
-  const run = async (command: string, messageId: number) => {
-    const raw = { update_id: messageId + 1000, message: { message_id: messageId, date: 1, from: { id: Number(userId), is_bot: false, first_name: 'Member' }, chat: { id: Number(chatId), type: 'supergroup', title: 'Test group' }, text: `/${command}` } };
+  const run = async (command: string, messageId: number, rawText = `/${command}`) => {
+    const raw = { update_id: messageId + 1000, message: { message_id: messageId, date: 1, from: { id: Number(userId), is_bot: false, first_name: 'Member' }, chat: { id: Number(chatId), type: 'supergroup', title: 'Test group' }, text: rawText } };
     const session = bot.session({ type: 'interaction/command', platform: 'telegram', user: { id: userId, name: 'Member', isBot: false },
       guild: { id: chatId, name: 'Test group' }, channel: { id: chatId, type: 0 },
       message: { id: String(messageId), content: `/${command}`, elements: [] }, _data: raw } as any);
@@ -119,4 +121,28 @@ test('native Koishi treats an empty send receipt as unknown and does not retry d
   assert.equal(db.prepare('SELECT status FROM telegram_deliveries WHERE task_id=?').get(task.task!.id)?.status, 'unknown');
   await f.run('links https://example.test/uncertain', 21);
   assert.equal(f.bot.sent.filter(text => text.includes('LINKS:')).length, attempts);
+});
+
+test('native keywords uses current group rules once with zero model calls and respects disabled scope', async t => {
+  const f = await fixture(t, true);
+  await f.run('register', 40);
+  f.store.setPluginAvailability('antiad', true); f.store.setPluginEnabled('antiad', true);
+  const group = f.store.group(`tg:${chatId}`, `tg-user:${userId}`)!;
+  const proposal = await f.actions.previewRules(`tg-user:${userId}`, group.id, {
+    baseVersion: group.version, config: { ...group.config, features: [...group.config.features, 'antiad'] },
+  });
+  await f.actions.activateRules(`tg-user:${userId}`, proposal.id);
+  await f.run('keywords 免费领取', 41);
+  const reservation = f.store.reservation(group.id, `tg-user:${userId}`, 'koishi-keywords:1041:41');
+  assert.equal(reservation?.task?.status, 'succeeded');
+  assert.equal(reservation?.task?.modelCalls, 0);
+  assert.match(reservation!.task!.output, /免费领取/);
+  assert.equal(f.bot.sent.filter(text => text.includes('关键词规则命中')).length, 1);
+  await f.run('keywords 免费领取', 41);
+  assert.equal(f.bot.sent.filter(text => text.includes('关键词规则命中')).length, 1);
+  await f.run('keywords 免费领取', 42, '/keywords@otherbot 免费领取');
+  assert.equal(f.store.reservation(group.id, `tg-user:${userId}`, 'koishi-keywords:1042:42'), undefined);
+  f.store.setPluginEnabled('antiad', false);
+  await f.run('keywords 免费领取', 43);
+  assert.ok(!f.store.reservation(group.id, `tg-user:${userId}`, 'koishi-keywords:1043:43')?.task?.output);
 });

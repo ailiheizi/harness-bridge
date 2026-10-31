@@ -41,7 +41,9 @@ for commands, dependencies, defaults, and evidence scope.
 | Audio/video | `/convert m4a`, `/convert small`, `/mediainfo`, `/clip`, `/v2g` | `ENABLE_MEDIA=1` and FFmpeg/ffprobe where required. Support depends on input type; see the media guide for cancellation boundaries. |
 | Markdown rendering | `/mdimg <Markdown>` | `ENABLE_RENDER=1` and a working sandboxed browser are required. |
 | Public video parsing | `/parse <url>` | Optional, manual, anonymous public content only. Best-effort; no cookies, login, proxy bypass, or guarantee that a site remains supported. |
-| Anti-ad review | `/scan <text>` | Disabled and unavailable by default in this public snapshot. The legacy copied classifier modules are omitted. See [the adapter guide](integrations/antiad/README.md) before supplying reviewed replacement modules and a read-only model. It only provides review suggestions, never moderation actions. |
+| Local keyword review | `/keywords <text>` or Web | Built into the native host. Platform and group must enable it; per-group editable rules, five visible defaults, zero model calls. No trained classifier or moderation actions. [Guide](docs/KEYWORD-REVIEW.md). |
+| AI ad review | `/scan <text>` | Uses the existing assistant/DSH route with explicit confirmation and actual model usage. No chat history or tools, advice only. [Guide](docs/AI-AD-REVIEW.md). |
+| Daily RSS digest preset | `/rssdigest 每天09:00`, then confirmation | Bounded source/model/group plan reuses native RSS and schedule. See [current validation status](docs/RSS-DIGEST.md); it is not arbitrary workflow orchestration. |
 
 ## Current limits
 

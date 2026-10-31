@@ -329,6 +329,17 @@ export class Store {
     this.db.prepare('UPDATE plugins SET json=? WHERE id=?').run(JSON.stringify(updated), id);
     return updated;
   }
+  /** Describes the trusted antiad executor installed by the host, never user input. */
+  setAntiadBackend(reviewBackend: 'keywords' | 'classifier'): void {
+    const plugin = this.plugin('antiad'); if (!plugin) return;
+    const seed = INITIAL_PLUGINS.find(value => value.id === 'antiad')!;
+    const updated: Plugin = { ...plugin, reviewBackend,
+      authorizationVersion: (plugin.authorizationVersion ?? 0) + Number(plugin.reviewBackend !== reviewBackend),
+      ...(reviewBackend === 'keywords'
+        ? { name: '关键词复核', description: '使用本群关键词本地匹配显式提交的文本；零模型调用，仅供人工复核。', scope: '固定代码；不运行训练分类器，不读取群历史，不自动删帖或封禁' }
+        : { name: seed.name, description: seed.description, scope: seed.scope }) };
+    this.db.prepare('UPDATE plugins SET json=? WHERE id=?').run(JSON.stringify(updated), 'antiad');
+  }
   permissionVersions(groupId: string, featureId: string) {
     const group = decode<StoredGroup>((this.db.prepare(groupId.startsWith('tg-dm:') ? 'SELECT json FROM private_scopes WHERE id=?' : 'SELECT json FROM groups WHERE id=?').get(groupId) as Row | undefined));
     const plugin = this.plugin(featureId);

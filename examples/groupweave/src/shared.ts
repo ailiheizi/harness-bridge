@@ -25,6 +25,8 @@ export interface Plugin {
   id: string; name: string; description: string; kind: 'code' | 'agent';
   enabled: boolean; available: boolean; scope: string; color: string;
   authorizationVersion?: number;
+  /** Trusted host observation of the installed review implementation. */
+  reviewBackend?: 'keywords' | 'classifier';
 }
 export interface Proposal {
   id: string; groupId: string; creatorId: string; baseVersion: number;

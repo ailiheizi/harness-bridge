@@ -4,6 +4,7 @@ import type { Group } from '../shared';
 
 // Documentation for existing native commands; this directory never invokes tools.
 const tools = [
+  { id: 'keywords', gate: 'antiad', name: '关键词复核', icon: FileText, category: '内容处理', description: '使用本群可编辑关键词检查明确提交的文本；零模型调用，仅供人工复核。', commands: ['/keywords 待检查文本'], steps: '平台开放关键词复核后，群管理员在功能配置中启用并调整关键词。成员发送显式文本即可，不读取群历史。', condition: '需平台安装本地关键词实现及平台/本群启用；不是训练分类器，不自动处罚。AI复核另用 /scan。', admin: false },
   { id: 'files', gate: 'media', name: '文件读写', icon: FileText, category: '文件与媒体', description: '查看附件信息、读取 TXT / Markdown，或把文字保存成文件。', commands: ['/fileinfo', '/readfile', '/savefile hello'], steps: '在群里发送命令后按提示上传，或回复本人要处理的附件。', condition: '需平台启用文件与媒体服务。', admin: false },
   { id: 'video', gate: 'media', name: '视频与音频', icon: Clapperboard, category: '文件与媒体', description: '视频转 GIF、压缩 MP4、抽取音频、裁剪和查看媒体信息。', commands: ['/v2g', '/convert m4a', '/convert small', '/mediainfo', '/cancelmedia', '/cancelv2g'], steps: '先发送转换命令，再按提示上传媒体。GIF 与其他转换使用各自取消命令。', condition: '需 ENABLE_MEDIA 与 FFmpeg；大小及参数以命令提示为准。', admin: false },
   { id: 'image', gate: 'image', name: '图片与 PDF', icon: Image, category: '文件与媒体', description: '转换 JPG / PNG / WebP；多张图片整理成 PDF。', commands: ['/image webp 1280 80', '/imgpdf start', '/imgpdf done', '/imgpdf cancel'], steps: '转换时回复图片；PDF 先开始收集，等待图片上传完成后发送 done。', condition: '需平台启用图片服务；PDF 最多 10 张，收集窗口 120 秒。', admin: false },
@@ -35,7 +36,7 @@ export function ToolDirectory({ group, preview }: { group: Group; preview: boole
     {!visible.length ? <div className="panel empty compact"><Search size={28}/><h3>没有匹配的工具</h3><p>试试功能名称或命令，也可以清除筛选。</p><button className="button secondary" onClick={() => { setQuery(''); setCategory('全部'); }}>显示全部工具</button></div> : <div className="tool-grid">{visible.map(tool => {
       const Icon = tool.icon;
       const nativeAllowed = (id: string) => !group.config.nativeFeatures || group.config.nativeFeatures.includes(id);
-      const allowed = tool.id === 'ad-review' ? group.config.features.includes('assistant') : tool.id === 'digest-plan' ? group.config.features.includes('digest') && nativeAllowed('rss') && nativeAllowed('schedule') : nativeAllowed(tool.gate);
+      const allowed = tool.id === 'keywords' ? group.config.features.includes('antiad') : tool.id === 'ad-review' ? group.config.features.includes('assistant') : tool.id === 'digest-plan' ? group.config.features.includes('digest') && nativeAllowed('rss') && nativeAllowed('schedule') : nativeAllowed(tool.gate);
       const usesModel = tool.id === 'ad-review' || tool.id === 'digest-plan';
       return <article className="panel tool-card" key={tool.id}>
         <div className="tool-heading"><span className="feature-icon blue"><Icon size={21}/></span><div><h2>{tool.name}</h2><small>{tool.category}</small></div><span className={`tool-status ${allowed ? '' : 'off'}`}>{allowed ? '群已允许' : '本群已关闭'}</span></div>

@@ -25,6 +25,7 @@ export interface AppOptions {
   mixedExecutor?: Executor;
   welcomeExecutor?: Executor;
   antiadExecutor?: Executor;
+  antiadBackend?: 'keywords' | 'classifier';
   assistantExecutor?: Executor;
   sandboxAiTimeoutMs?: number;
   preview?: boolean;
@@ -85,6 +86,7 @@ export async function buildApp(options: AppOptions = {}) {
   store.setPluginAvailability('link-brief', Boolean(options.mixedExecutor));
   store.setPluginAvailability('welcome', Boolean(options.welcomeExecutor));
   store.setPluginAvailability('antiad', Boolean(options.antiadExecutor));
+  store.setAntiadBackend(options.antiadBackend ?? 'classifier');
   store.setPluginAvailability('assistant', Boolean(options.assistantExecutor));
   const secureCookie = Boolean(publicOrigin);
   await app.register(fastifyCookie);

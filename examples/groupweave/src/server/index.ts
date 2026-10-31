@@ -12,6 +12,7 @@ import { runLinkCodeTool } from './mixed';
 import { createAntiadExecutor, AntiadError, type AntiadExecutor } from './antiad';
 import { createStoreAuthorizedSandboxExecutor, loadSandboxBindingModule, sandboxTaskTimeoutMs } from './sandbox-wiring.js';
 import type { TrustedSandboxAiRequest } from './sandbox-ai.js';
+import { keywordReview } from './keyword-review.js';
 
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 4318);
@@ -67,11 +68,12 @@ app = await buildApp({
   ...(sandboxModule ? { sandboxAiTimeoutMs: sandboxTaskTimeoutMs(sandboxModule) } : {}),
   echoExecutor: (request, signal) => code.executeEcho(request, signal),
   welcomeExecutor: (request, signal) => code.executeWelcome(request, signal),
+  antiadBackend: antiad ? 'classifier' : 'keywords',
   antiadExecutor: antiad ? (request, signal) => antiad!({
     actorId: request.actorId, groupId: request.groupId, input: request.input, audience: request.audience, authorized: request.authorized,
     rules: { promptThreshold: request.options.antiadPromptThreshold ?? 0.55, actionThreshold: request.options.antiadActionThreshold ?? 0.9,
       stopwords: request.options.antiadStopwords ?? [] },
-  }, signal) : undefined,
+  }, signal) : process.env.ENABLE_ANTIAD === '1' ? undefined : keywordReview,
   aiExecutor: sandbox ? (request: ExecutorRequest, signal) => {
     if (request.authorized !== true || request.featureId !== 'digest') return Promise.reject(new Error('SANDBOX_TASK_SCOPE_INVALID'));
     return sandbox.execute({

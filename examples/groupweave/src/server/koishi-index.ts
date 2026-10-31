@@ -30,6 +30,7 @@ import { nativeFeatureAllowed, type NativeFeature } from './group-config.js';
 import { installSessionCommands } from './koishi-session.js';
 import { installNaturalRuleCommands } from './rule-proposals.js';
 import { installRssDigestIntegration, type RssDigestIntegration } from './rss-digest.js';
+import { keywordReview } from './keyword-review.js';
 
 class StartupConfigurationError extends Error {}
 const require = createRequire(import.meta.url);
@@ -141,6 +142,7 @@ export async function startKoishiHost(configPath = resolve(process.env.KOISHI_CO
           dataDir, preview: false, nativeKoishi: true,
           pluginMaintenance, modelProfiles, defaultModelProfileId: modelProfiles.length ? 'default' : undefined,
           aiExecutor: sandboxExecutor,
+          antiadExecutor: keywordReview, antiadBackend: 'keywords',
           assistantExecutor: sandboxExecutor,
           mixedExecutor: sandboxExecutor,
           ...(sandboxModule ? { sandboxAiTimeoutMs: sandboxTaskTimeoutMs(sandboxModule) } : {}),

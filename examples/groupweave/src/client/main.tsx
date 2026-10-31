@@ -201,7 +201,9 @@ function App() {
   const executionPlugin = plugins.find(plugin => plugin.id === runFeature);
   const canRun = executionPlugin?.available && executionPlugin.enabled && group?.config.features.includes(runFeature) && (runFeature !== 'link-brief' || linksEnabled);
   const isAgent = executionPlugin?.kind === 'agent';
-  const executionCopy = featureCopy[runFeature];
+  const executionCopy = runFeature === 'antiad' && executionPlugin?.reviewBackend === 'keywords'
+    ? { ...featureCopy.antiad, name: '关键词复核', description: '按本群关键词在本地匹配本次文本；命中仅供人工复核，未命中不代表安全。不运行训练分类器，不自动处罚。', button: '检查关键词', complete: '规则匹配完成，请人工复核' }
+    : featureCopy[runFeature];
   const ExecutionIcon = featureIcons[runFeature];
   function featureCard(plugin: Plugin, platform = false) {
     const Icon = featureIcons[plugin.id] || Blocks;
