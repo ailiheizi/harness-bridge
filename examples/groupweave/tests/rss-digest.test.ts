@@ -28,15 +28,25 @@ async function fixture(t: test.TestContext, late = false) {
   await new Promise<void>(r => feed.listen(0, '127.0.0.1', r));
   const feedUrl = `http://127.0.0.1:${(feed.address() as any).port}/rss`;
   const configPath = join(dir, 'koishi.yml');
-  await writeFile(configPath, `plugins:\n  http: {}\n  database-sqlite:\n    path: ${JSON.stringify(join(dir, 'native.db'))}\n  schedule: {}\n  rss:\n    refresh: ${late ? 80 : 60000}\n`);
+  await writeFile(configPath, `plugins:\n  http: {}\n  database-sqlite:\n    path: ${JSON.stringify(join(dir, 'native.db'))}\n  schedule: {}\n${late ? '' : '  rss: {}\n'}`);
   let digest!: RssDigestIntegration; let bot!: LocalBot; let allowed = true; let permission = '1:1'; let calls = 0;
   let holdAuth = -1; let authRelease: (() => void) | undefined; let authBlocked: (() => void) | undefined;
   let finish: (() => void) | undefined; let delay = false;
-  const outputs: string[] = []; const inputs: string[] = [];
+  const outputs: string[] = []; const inputs: string[] = []; let lateRss: (() => void) | undefined;
   const createRuntime = () => createKoishiRuntime({ configPath, ...(late ? { maintenanceDir: () => join(dir, 'managed') } : {}), async setup(ctx) {
     if (late) await new Promise(r => setTimeout(r, 50));
     ctx.plugin(LocalBot);
-    installRssIntegration(ctx, { authorize: async () => allowed, allowBroadcast: async () => true, onItem: (platform, channel, text) => digest?.capture(platform, channel, text) });
+    if (late) {
+      const rss = require('koishi-plugin-rss');
+      ctx.plugin({ ...rss, apply(base: Context, config: unknown) {
+        // A native plugin may receive a derived context that shadows broadcast.
+        const actual = base.extend();
+        Object.defineProperty(actual, 'broadcast', { configurable: true, value: base.broadcast.bind(base) });
+        return rss.apply(actual, config);
+      } }, { refresh: 80 });
+    }
+    const installRss = () => installRssIntegration(ctx, { authorize: async () => allowed, allowBroadcast: async () => true, onItem: (platform, channel, text) => digest?.capture(platform, channel, text) });
+    if (late) lateRss = installRss; else installRss();
     const schedules = installScheduleIntegration(ctx, { authorize: async () => allowed });
     digest = installRssDigestIntegration(ctx, {
       schedules,
@@ -46,7 +56,7 @@ async function fixture(t: test.TestContext, late = false) {
     });
   } });
   let runtime = await createRuntime();
-  await runtime.start(); bot = runtime.app.bots.find(b => b.selfId === '99') as LocalBot;
+  await runtime.start(); lateRss?.(); bot = runtime.app.bots.find(b => b.selfId === '99') as LocalBot;
   await runtime.app.database.createChannel('telegram', '-1001', { assignee: '99', guildId: '-1001', rss: [feedUrl] } as any);
   let seq = 0;
   const run = async (command: string, group = '-1001', user = '42') => {
@@ -62,7 +72,7 @@ async function fixture(t: test.TestContext, late = false) {
     assert.match(await run(`rssdigest confirm ${id}`), /已启用/); return id;
   };
   t.after(async () => { finish?.(); await runtime.stop(); await new Promise<void>(r => feed.close(() => r())); await rm(dir, { recursive: true, force: true }); });
-  return { run, activate, feedUrl, publish() { feedTitle = 'actual native event'; }, get feedRequests() { return feedRequests; }, get digest() { return digest; }, get runtime() { return runtime; }, async restart() { await runtime.stop(); runtime = await createRuntime(); await runtime.start(); bot = runtime.app.bots.find(b => b.selfId === '99') as LocalBot; }, outputs, inputs, get calls() { return calls; }, setAllowed(v: boolean) { allowed = v; }, setPermission(v: string) { permission = v; }, blockCurrentAuthorization() { holdAuth = 1; return new Promise<void>(r => { authBlocked = r; }); }, releaseAuthorization() { authRelease?.(); }, hold() { delay = true; }, release() { finish?.(); } };
+  return { run, activate, feedUrl, publish() { feedTitle = 'actual native event'; }, get feedRequests() { return feedRequests; }, get digest() { return digest; }, get runtime() { return runtime; }, async restart() { await runtime.stop(); runtime = await createRuntime(); await runtime.start(); lateRss?.(); bot = runtime.app.bots.find(b => b.selfId === '99') as LocalBot; }, outputs, inputs, get calls() { return calls; }, setAllowed(v: boolean) { allowed = v; }, setPermission(v: string) { permission = v; }, blockCurrentAuthorization() { holdAuth = 1; return new Promise<void>(r => { authBlocked = r; }); }, releaseAuthorization() { authRelease?.(); }, hold() { delay = true; }, release() { finish?.(); } };
 }
 test('daily RSS preset previews sources and cost, uses native schedule, batches once without cross-group data', async t => {
   const f = await fixture(t); await f.activate();
@@ -114,6 +124,7 @@ test('actual pinned RSS emitter notifications enter the digest batch', async t =
   for (let i = 0; i < 100 && f.feedRequests < 2; i++) await new Promise(r => setTimeout(r, 10));
   f.publish();
   for (let i = 0; i < 100 && !f.runtime.app.bots.some(b => (b as LocalBot).sent?.some(text => text.includes('actual native event'))); i++) await new Promise(r => setTimeout(r, 10));
+  assert.ok(f.runtime.app.bots.some(b => (b as LocalBot).sent?.some(text => text.includes('actual native event'))), 'native notification must also be delivered');
   await f.run('rssdigest run');
   assert.equal(f.calls, 1, 'native RSS event must be collected, not merely delivered raw');
   assert.match(f.inputs[0], /actual native event/);

@@ -24,26 +24,42 @@ export function installRssIntegration(ctx: Context, options: RssIntegrationOptio
     // Upstream closes over its plugin context and broadcasts from its existing
     // feed emitter. Adapt only that plugin scope, not global bot sends (which
     // would also suppress unrelated command replies and scheduled messages).
-    const rssContext: Context = command.ctx.scope.ctx;
+    const declaration: Context = Object.getOwnPropertyDescriptor(command, 'ctx')?.value ?? command.ctx;
+    const scope = declaration.scope;
+    const rssContext: Context = scope.ctx;
     if (options.allowBroadcast) {
-      const broadcast = rssContext.broadcast.bind(rssContext);
-      Object.defineProperty(rssContext, 'broadcast', { configurable: true, value: async (channels: string[], content: any, forced?: boolean) => {
-        const allowed: string[] = [];
-        for (const target of channels) {
-          const separator = target.indexOf(':');
-          if (separator < 1) continue;
-          try {
-            if (await options.allowBroadcast!(target.slice(0, separator), target.slice(separator + 1))) {
-              // Collection failures must not suppress the existing RSS delivery.
-              try { await options.onItem?.(target.slice(0, separator), target.slice(separator + 1), String(content)); }
-              catch { rssContext.logger('rss-digest').warn('RSS_DIGEST_CAPTURE_FAILED'); }
-              allowed.push(target);
-            }
-          } catch { /* Policy unavailable: do not deliver this item. */ }
-        }
-        return allowed.length ? broadcast(allowed, content, forced) : [];
-      } });
-      rssContext.on('dispose', () => { delete (rssContext as any).broadcast; });
+      // RSS declares its command on ctx.guild(), but its emitter closes over
+      // apply(ctx). A derived apply context can shadow the scope owner's
+      // broadcast, so intercept those own descriptors in the same plugin scope.
+      const contexts = new Set<Context>([rssContext]);
+      for (let current: Context | null = declaration; current && current.scope === scope; current = Object.getPrototypeOf(current)) {
+        if (Object.hasOwn(current, 'broadcast')) contexts.add(current);
+      }
+      const originals = [...contexts].map(context => ({ context, descriptor: Object.getOwnPropertyDescriptor(context, 'broadcast'), broadcast: context.broadcast.bind(context) }));
+      for (const { context, descriptor, broadcast } of originals) {
+        const wrapped = async (channels: string[], content: any, forced?: boolean) => {
+          const allowed: string[] = [];
+          for (const target of channels) {
+            const separator = target.indexOf(':');
+            if (separator < 1) continue;
+            try {
+              if (await options.allowBroadcast!(target.slice(0, separator), target.slice(separator + 1))) {
+                // Collection failures must not suppress the existing RSS delivery.
+                try { await options.onItem?.(target.slice(0, separator), target.slice(separator + 1), String(content)); }
+                catch { rssContext.logger('rss-digest').warn('RSS_DIGEST_CAPTURE_FAILED'); }
+                allowed.push(target);
+              }
+            } catch { /* Policy unavailable: do not deliver this item. */ }
+          }
+          return allowed.length ? broadcast(allowed, content, forced) : [];
+        };
+        Object.defineProperty(context, 'broadcast', { configurable: true, value: wrapped });
+        rssContext.on('dispose', () => {
+          if (Object.getOwnPropertyDescriptor(context, 'broadcast')?.value !== wrapped) return;
+          if (descriptor) Object.defineProperty(context, 'broadcast', descriptor);
+          else delete (context as any).broadcast;
+        });
+      }
     }
     // Telegram interaction/command invokes Session.execute directly, outside
     // the ordinary message middleware that flushes observed session models.
