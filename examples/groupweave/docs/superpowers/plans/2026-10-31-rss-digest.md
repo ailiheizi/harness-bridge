@@ -32,7 +32,7 @@ Docker唯一隔离；平台/群/个人权限与受众保持；不复制上游引
 - [x] 1. 先写 RSS 摘要的代表接入和直接反例；实现有限计划/缓存/预览确认与原生 schedule/RSS 接缝。
 - [x] 2. 接原生宿主 actions/投递；增加命令帮助与目录，构建并验证本轮接缝。
 - [x] 3. 增加显式 AI 广告复核 /scan（复用助手确认，不冒充本地分类器）；一条正常路径与缺权限/取消边界。
-- [ ] 4. 记录实际完成/限制，部署本项目并完成代表外部收件，更新Linear并push。
+- [x] 4. 记录实际完成/限制，部署本项目并完成代表外部收件，更新Linear并push。
 
 ## Rulings / progress
 
@@ -48,3 +48,5 @@ Ruling：为高频路径交付内置关键词代码（/keywords与Web），不�
 
 
 Ruling：派生context补丁部署后实际回调仍0；撤掉广播原型包装，改为已有pinned RSS补丁的一处Koishi原生serial钩子，让宿主直接过滤原目标/收集已准备通知。不是新增总线/协议。实际emitter先在缺hook时RED，再在补丁后GREEN；RSS摘要5例、既有RSS1例和直接受影响两群后台1例共7通过，构建通过，原始包补丁dry-run通过。等待本轮最后真实收件。
+
+最终实际收件：原生钩子后cache1/seen1/attempts0；真实run后TG收到摘要和来源链接，task succeeded、modelCalls1、usage923/302/1225、delivery sent，计划停止1/1并删除自己的schedule。AI scan亦真实收到结论/附件、1模型/0工具。运行源码5c442dd，临时诊断全部移除；关键词平台开关保持false。只清理本轮fixture与订阅，原群/会话/权限/其它业务保留。

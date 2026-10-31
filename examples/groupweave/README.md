@@ -95,6 +95,7 @@ fixtures and acceptance-only settings are not production defaults.
 - [Native acceptance history](docs/ACCEPTANCE-20261022-NATIVE.md)
 - [AI and file commands](docs/NATIVE-AI-FILES.md)
 - [RSS, reminders, and welcome](docs/NATIVE-UTILITIES.md)
+- [Daily RSS digest and review feature delivery](docs/RSS-REVIEW-DELIVERY-20261031.md)
 - [Images and media](docs/NATIVE-IMAGES.md)
 - [Native Telegram setup](docs/NATIVE-KOISHI.md)
 - [Feature boundary and maturity](docs/MODULES.md)
