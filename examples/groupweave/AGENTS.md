@@ -39,6 +39,11 @@
 
 ## 执行边界
 
+RSS 的授权与摘要收集依赖已固定版本补丁的 Koishi 原生通知钩子（ADR-048）。
+升级同时交付完整源码和受影响的 patched dependency，核对实际字节；仅包版本相同或
+复制 server/dist 不能证明接缝存在。不要回退为全局发送拦截或上下文原型猜测。
+检查只覆盖该真实接缝及受影响拒绝路径，继续遵守 ADR-039。
+
 原生 OpenShell 控制面使用上游已有 TLS/mTLS 与 sandbox JWT，不另造认证代理。
 客户端证书只属于可信宿主的 native CLI 配置，每任务复制到独立 native XDG 并
 随租约清理；不得放入 DSH HOME、工作区、模型补丁、Skill、上传集或公开收据。

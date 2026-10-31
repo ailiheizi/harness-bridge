@@ -42,8 +42,10 @@ The pinned emitter also offers the optional local
 `groupweave/rss-before-broadcast` lifecycle hook. The GroupWeave host uses
 Koishi's existing `serial` event to filter the original targets using current
 group policy and collect only approved prepared notification text. Returned
-targets must be a subset; invalid results or hook failures withhold the batch.
-Without a host listener the ordinary upstream broadcast remains unchanged.
+targets must be a subset; malformed observable decisions or hook failures withhold the batch.
+The host always returns an array (empty means no delivery). Koishi serial
+skips null/false/undefined; without an observable decision the ordinary
+upstream broadcast remains unchanged.
 This single adapter hook replaces context/prototype broadcast interception,
 which did not cover the actual deployed emitter. It adds no scheduler or event
 bus and must be included with the host source when deploying an overlay.
