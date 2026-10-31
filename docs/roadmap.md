@@ -23,16 +23,17 @@ new package, protocol, or separate framework project.
 The application record identifies actual product gaps rather than treating
 every untested combination as a feature request:
 
-- Console online plugin installation and a complete dependency interface are
-  not delivered.
-- AI sandbox file artifact return is not delivered; the library currently
-  returns bounded text and evidence only.
-- Multi-turn AI memory and broad plugin permissions are not delivered.
+- The source now implements native online plugin maintenance, fixed sandbox
+  Markdown return, bounded conversations, model presets and group tool switches.
+  Keep implementation and deployment evidence distinct; see the
+  [2026-10-31 guide](../examples/groupweave/docs/M1-M4-USAGE.md).
+- Group configuration composes existing fields and installed presets. Arbitrary
+  workflow graphs and arbitrary untrusted npm plugins are outside this design.
 - Anonymous site parsing is best-effort. Remote failures remain visible and
   are not described as successful extraction.
 
 See GroupWeave's [TODO](../examples/groupweave/docs/TODO.md) and
-[fourteenth acceptance batch](../examples/groupweave/docs/ACCEPTANCE-20261022-NATIVE.md)
+[2026-10-31 delivery record](../examples/groupweave/docs/DELIVERY-20261031.md)
 for current feature evidence and the limits on real Telegram/provider claims.
 
 ## Before broader deployment claims

@@ -43,6 +43,15 @@ export function createTelegramBinding(store: Store, actions: ReturnType<typeof c
       const proposal = await proposalFor(actor, id) ?? deny(404, 'NOT_FOUND', '找不到可由本人启用的本群提案。');
       return actions.activateRules(telegramActorId(actor.userId), proposal.id);
     },
+    async cancelRules(actor, id) { const proposal = await proposalFor(actor, id) ?? deny(404, 'NOT_FOUND', '找不到本人本群提案。'); return actions.cancelRules(telegramActorId(actor.userId), proposal.id); },
+    async rollbackRules(actor, id) { const proposal = await proposalFor(actor, id) ?? deny(404, 'NOT_FOUND', '找不到本人本群提案。'); return actions.rollbackRules(telegramActorId(actor.userId), proposal.id); },
+    async ownTasks(actor) { await current(actor); const { actorId, groupId } = ids(actor); return actions.ownTasks(actorId, groupId); },
+    async ownTask(actor, id) { await current(actor); const { actorId, groupId } = ids(actor); return actions.ownTask(actorId, groupId, id); },
+    async cancelTask(actor, id) { await current(actor); const { actorId, groupId } = ids(actor); await actions.ownTask(actorId, groupId, id); return actions.cancelTask(actorId, id); },
+    async resetConversation(actor) { await current(actor); const { actorId, groupId } = ids(actor); return actions.resetConversation(actorId, groupId); },
+    async listModels(actor) { await current(actor); const { actorId, groupId } = ids(actor); return actions.listModels(actorId, groupId); },
+    async selectModel(actor, id) { await current(actor); const { actorId, groupId } = ids(actor); return actions.selectModel(actorId, groupId, id); },
+    async takeTaskArtifact(actor, id) { await current(actor); const { actorId, groupId } = ids(actor); await actions.ownTask(actorId, groupId, id); return actions.takeTaskArtifact(actorId, id); },
     async executeLinks(request) {
       if (personal) return deny(400, 'PRIVATE_SCOPE_OPERATION', '本私人入口只接入问答与摘要。');
       const { actorId, groupId } = ids(request.actor);

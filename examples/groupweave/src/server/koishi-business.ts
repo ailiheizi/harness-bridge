@@ -1,3 +1,4 @@
+import { describeGroupSettings, describeRuleProposal, installGroupAdminCommands, type GroupAdminBinding } from './koishi-group-admin.js';
 import { createRequire } from 'node:module';
 import type { Context, Session } from 'koishi';
 import type { Role } from '../shared.js';
@@ -82,7 +83,8 @@ async function send(session: Session, text: string) {
 }
 
 /** Install GroupWeave commands as ordinary Koishi commands on real Telegram sessions. */
-export function installGroupCommands(ctx: Context, binding: TelegramBinding, options: { aiConfigured?: boolean; privateBinding?: TelegramBinding; renderConfigured?: boolean; parserConfigured?: boolean } = {}): void {
+export function installGroupCommands(ctx: Context, binding: TelegramBinding, options: { aiConfigured?: boolean; privateBinding?: TelegramBinding; renderConfigured?: boolean; parserConfigured?: boolean; groupAdmin?: GroupAdminBinding } = {}): void {
+  if (options.groupAdmin) installGroupAdminCommands(ctx, options.groupAdmin, send);
   const privateAiHint = () => options.aiConfigured && options.privateBinding
     ? '私聊 AI：平台启用后可直接发文字、/ask <问题>、/digest <文本>、/translate <目标语言> <文本>，也可回复本会话文本后使用命令；本人确认第三方处理才执行。/cancel 取消本人私聊任务。'
     : '私聊 AI 尚未配置，需要平台管理员接入 Docker/DSH 并启用问答或摘要。';
@@ -155,13 +157,13 @@ export function installGroupCommands(ctx: Context, binding: TelegramBinding, opt
     if (!group) return send(session, '本群尚未注册，请由本群管理员使用 /register。');
     const role = await verifyTelegramMember((session as NativeSession).bot, src.actor.groupId, src.actor.userId);
     if (role !== 'admin') return send(session, '此操作需要当前本群管理员身份。');
-    await send(session, `本群配置 v${group.version}\n回复方式：${group.config.responseMode}\n语言：${group.config.language}\n功能：${group.config.features.map(id => featureNames[id] ?? id).join('、') || '无'}\n去重：${group.config.deduplicate ? '开启' : '关闭'}；排序：${group.config.sort ? '开启' : '关闭'}；最多条数：${group.config.maxItems}\n用 /rules <群规则> 预览，再由提案创建者用 /applyrules <提案ID> 确认。`);
+    await send(session, describeGroupSettings(group));
   });
   register('rules <text:text>', async (session, text = '') => {
     const src = telegramCommandSource(session); if (!src) return;
     if (!text.trim()) return send(session, '用法：/rules <群规则>。');
     const proposal = await binding.previewRules(src.actor, text.trim());
-    await send(session, `规则预览 ${proposal.id} · 配置 v${proposal.baseVersion}\n${proposal.changes.join('\n') || '没有配置变化'}${proposal.warnings.length ? `\n未解决要求：\n${proposal.warnings.join('\n')}` : `\n确认命令：/applyrules ${proposal.id}`}`);
+    await send(session, describeRuleProposal(proposal));
   });
   register('applyrules <id:string>', async (session, id = '') => {
     const src = telegramCommandSource(session); if (!src) return;

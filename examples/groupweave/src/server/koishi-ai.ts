@@ -169,6 +169,12 @@ export function installAiCommands(ctx: Context, binding: TelegramBinding, option
         const receipts = await session.send([h.quote(String(messageId)), h.text(chunk)]);
         if (!receipts?.length) { await activeBinding.recordDelivery(actor, task.id, 'unknown'); return; }
       }
+      if (task.artifact) {
+        const file = await activeBinding.takeTaskArtifact?.(actor, task.id);
+        if (!file || (activeBinding.deliveryStillAuthorized && !activeBinding.deliveryStillAuthorized(actor, task.id))) { await activeBinding.recordDelivery(actor, task.id, 'unknown'); return; }
+        const receipts = await session.send([h.quote(String(messageId)), h.file(Buffer.from(file.data), file.mediaType, { name: file.name })]);
+        if (!receipts?.length) { await activeBinding.recordDelivery(actor, task.id, 'unknown'); return; }
+      }
       await activeBinding.recordDelivery(actor, task.id, 'sent');
     } catch { await activeBinding.recordDelivery(actor, task.id, 'unknown'); }
   }
@@ -206,7 +212,7 @@ export function installAiCommands(ctx: Context, binding: TelegramBinding, option
           messageId: result.message.message_id!, updateId: src.updateId, input: result.input, mode: result.mode, targeted: result.targeted });
         const notice = feature === 'link-brief'
           ? '将仅用本次输入运行链接整理代码，再把原文和整理结果发送给第三方 AI 生成说明；不访问链接或群历史。确认后才会运行。'
-          : '将把这段文本发送给第三方 AI 处理。确认后才会运行；不读取群历史。';
+          : '将把这段文本发送给第三方 AI 处理。确认后才会运行；仅问答会使用本人当前会话中明确提交的上下文，可用 /newchat 重置；不读取群历史。';
         await session.send([h.quote(String(result.message.message_id)), h.text(notice),
           h('button', { id: confirmation }, '确认第三方处理并运行')]);
         } catch { await reply(session, '无法读取本群配置或准备确认；请稍后查看群配置。', src.messageId); }
@@ -228,7 +234,7 @@ export function installAiCommands(ctx: Context, binding: TelegramBinding, option
         if (Buffer.byteLength(src.raw.text, 'utf8') > LIMIT) return reply(session, '本次文本超过 8 KB，未提交给 AI。', src.messageId);
         const token = confirmations.issue({ featureId: 'assistant', groupId: `tg-dm:${src.actor.userId}`, userId: src.actor.userId,
           messageId: src.messageId, updateId: src.updateId, input: src.raw.text.trim(), mode: 'reply', targeted: false });
-        await session.send([h.quote(String(src.messageId)), h.text('将把这段文本发送给第三方 AI 处理。确认后才会运行。'),
+        await session.send([h.quote(String(src.messageId)), h.text('将把这段文本及本人当前会话中明确提交的上下文发送给第三方 AI。确认后才会运行，可用 /newchat 重置上下文。'),
           h('button', { id: token }, '确认第三方处理并运行')]);
       } catch { /* Invalid/private sessions stay silent. */ }
       return;
@@ -244,7 +250,7 @@ export function installAiCommands(ctx: Context, binding: TelegramBinding, option
       if (Buffer.byteLength(selected.input, 'utf8') > LIMIT) return reply(session, '本次文本超过 8 KB，未提交给 AI。', selected.message.message_id);
       const token = confirmations.issue({ featureId: 'assistant', groupId: src.actor.groupId, userId: src.actor.userId,
         messageId: selected.message.message_id!, updateId: src.updateId, input: selected.input, mode: 'mention', targeted: true });
-      await session.send([h.quote(String(selected.message.message_id)), h.text('将把这段文本发送给第三方 AI 处理。确认后才会运行；不读取群历史。'),
+      await session.send([h.quote(String(selected.message.message_id)), h.text('将把这段文本发送给第三方 AI 处理。确认后才会运行；仅问答会使用本人当前会话中明确提交的上下文，可用 /newchat 重置；不读取群历史。'),
         h('button', { id: token }, '确认第三方处理并运行')]);
     } catch { await reply(session, '无法读取本群配置或准备确认；请稍后查看群配置。', src.messageId); }
   });
@@ -300,7 +306,7 @@ export function installAiCommands(ctx: Context, binding: TelegramBinding, option
     if (!input || Buffer.byteLength(input, 'utf8') > LIMIT || !confirmations.consume(token, { ...decoded, groupId: signatureScope, input }))
       return reply(session, '确认按钮无效、已过期或已使用。', original.message_id);
     if (options.configured === false) return reply(session, '本服务尚未配置 AI 执行能力；未运行任务。', original.message_id);
-    try { await session.send([h.quote(String(original.message_id)), h.text('正在处理。')]); } catch { return; }
+    try { await session.send([h.quote(String(original.message_id)), h.text('正在处理，可用 /tasks 查看状态，/cancel 取消本人当前会话任务。')]); } catch { return; }
     const current = await activeBinding.getGroup(actor);
     if (!current || !current.config.features.includes(decoded.featureId)
       || (!isPrivate && current.config.responseMode === 'mention' && !decoded.targeted)) return reply(session, isPrivate ? '当前会话配置已更改，未运行任务。' : '群配置已更改，未运行任务。', original.message_id);

@@ -34,6 +34,15 @@ export interface TelegramBinding {
   activateRules(actor: TelegramActor, proposalId: string): Promise<Proposal>;
   executeLinks(request: TelegramLinksRequest): Promise<Task>;
   executeFeature?(request: TelegramFeatureRequest): Promise<Task>;
+  cancelRules?(actor: TelegramActor, id: string): Promise<Proposal>;
+  rollbackRules?(actor: TelegramActor, id: string): Promise<Proposal>;
+  ownTasks?(actor: TelegramActor): Promise<(Task & { pending: boolean })[]>;
+  ownTask?(actor: TelegramActor, id: string): Promise<Task & { pending: boolean }>;
+  cancelTask?(actor: TelegramActor, id: string): Promise<{ requested: boolean }>;
+  resetConversation?(actor: TelegramActor): Promise<void>;
+  listModels?(actor: TelegramActor): Promise<{ profiles: readonly { id: string; label: string }[]; selectedId?: string }>;
+  selectModel?(actor: TelegramActor, id: string): Promise<{ selectedId: string }>;
+  takeTaskArtifact?(actor: TelegramActor, taskId: string): Promise<import('./ai.js').TaskArtifact | undefined>;
   cancelOwnTasks?(actor: TelegramActor): Promise<number>;
   /** No await between this final synchronous authorization check and sendMessage. */
   deliveryStillAuthorized?(actor: TelegramActor, taskId: string): boolean;

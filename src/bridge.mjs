@@ -1,6 +1,8 @@
 import { execa } from 'execa';
 import { randomUUID, createHash } from 'node:crypto';
-import { stat } from 'node:fs/promises';
+import { stat, mkdtemp, open, lstat, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 const defaults = { totalTimeoutMs: 120_000, commandTimeoutMs: 20_000, maxOutputBytes: 256 * 1024 };
@@ -46,6 +48,7 @@ function dshEvents(text, exitCode) {
 export function createHarnessBridge(options) {
   if (!options || typeof options !== 'object') throw new TypeError('options required');
   const cfg = options;
+  if (cfg.dsh?.downloadResult !== undefined && typeof cfg.dsh.downloadResult !== 'boolean') throw new TypeError('invalid downloadResult');
   const limits = { ...defaults, ...cfg.limits };
   for (const [k, v] of Object.entries(limits)) if (!Number.isSafeInteger(v) || v <= 0) throw new TypeError(`invalid ${k}`);
   if (!cfg.native?.cliPath || !path.isAbsolute(cfg.native.cliPath) || typeof cfg.native.workspace !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(cfg.native.workspace) || !path.isAbsolute(cfg.native.home) || !path.isAbsolute(cfg.native.xdgConfigHome) || !path.isAbsolute(cfg.native.policyPath) || !path.isAbsolute(cfg.dsh?.patchPath)) throw new TypeError('native paths must be absolute and workspace must be a logical OpenShell workspace name');
@@ -85,6 +88,7 @@ async function execute(cfg, limits, request, signal) {
   let cleanupDeadline = 0;
   let result;
   let failure;
+  let downloadDir;
   const env = {
     PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
     HOME: cfg.native.home,
@@ -117,7 +121,7 @@ async function execute(cfg, limits, request, signal) {
     if (Date.now() >= (cleanupMode ? cleanupDeadline : deadline)) throw fail(operation, cleanupMode ? 'cleanup_deadline_exceeded' : 'deadline_exceeded');
     const controllerCleanup = cleanupMode && ['get', 'list', 'stop', 'delete'].includes(operation);
     if (!controllerCleanup) await boundedAuthorization(() => cfg.authorizeNativeCall({ operation, taskId, tenantId, actorId, sandbox: identity }), operation);
-    if (created && identity && ['upload', 'exec', 'stop', 'delete'].includes(operation)) {
+    if (created && identity && ['upload', 'exec', 'download', 'stop', 'delete'].includes(operation)) {
       const current = await inspect();
       if (current.id !== identity.id) throw fail('identity', 'native_identity_changed');
     }
@@ -225,7 +229,36 @@ async function execute(cfg, limits, request, signal) {
     evidence.execution = 'verified';
     evidence.dshSessionId = parsed.sessionId;
     evidence.toolCallCount = parsed.toolCallCount;
-    result = { taskId, status: 'completed', output: parsed.output, sandbox: identity };
+    let artifact;
+    if (cfg.dsh.downloadResult) {
+      // A host opt-in to one workload-owned export, never an Agent-supplied path.
+      downloadDir = await mkdtemp(path.join(os.tmpdir(), 'harness-result-'));
+      const local = path.join(downloadDir, 'result.md');
+      const downloaded = await native('download', ['sandbox', 'download', name, '/workspace/exports/result.md', local]);
+      if (downloaded.exitCode !== 0) throw fail('download', 'native_download_failed');
+      const meta = await lstat(local);
+      if (!meta.isFile() || meta.isSymbolicLink() || meta.size < 1 || meta.size > 64_000) throw fail('download', 'invalid_result_file');
+      const file = await open(local, constants.O_RDONLY | constants.O_NOFOLLOW);
+      let data;
+      try {
+        const actual = await file.stat();
+        if (!actual.isFile() || actual.size !== meta.size || actual.ino !== meta.ino || actual.dev !== meta.dev) throw fail('download', 'result_file_changed');
+        const bounded = Buffer.alloc(64_001);
+        let size = 0;
+        while (size < bounded.length) {
+          const read = await file.read(bounded, size, bounded.length - size, null);
+          if (!read.bytesRead) break;
+          size += read.bytesRead;
+        }
+        if (size !== meta.size || size > 64_000) throw fail('download', 'invalid_result_file');
+        data = bounded.subarray(0, size);
+      } finally { await file.close(); }
+      // The trusted turn observer exports exactly the committed final text.
+      // Reject cross-turn, substituted and malformed exports rather than release them.
+      if (!data.equals(Buffer.from(parsed.output, 'utf8'))) throw fail('download', 'result_content_mismatch');
+      artifact = { name: 'result.md', mediaType: 'text/markdown', data };
+    }
+    result = { taskId, status: 'completed', output: parsed.output, sandbox: identity, ...(artifact ? { artifact } : {}) };
   } catch (e) {
     failure = { stage: e?.stage ?? 'bridge', code: e?.code ?? 'bridge_failed' };
   } finally {
@@ -280,6 +313,10 @@ async function execute(cfg, limits, request, signal) {
         failure ??= { stage: e?.stage ?? 'cleanup', code: e?.code ?? 'cleanup_failed' };
       }
     }
+  }
+  if (downloadDir) {
+    try { await rm(downloadDir, { recursive: true, force: true }); }
+    catch { failure ??= { stage: 'download', code: 'local_cleanup_failed' }; result = undefined; }
   }
   if (!result && !failure) failure = { stage: 'bridge', code: 'no_result' };
   if (result && evidence.cleanup !== 'verified') {

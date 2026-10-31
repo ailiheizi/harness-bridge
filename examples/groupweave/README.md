@@ -40,9 +40,12 @@ representative real Telegram paths for:
 
 ## Current limits
 
-The real provider path is single-turn. Multi-turn conversation memory, return of
-files created inside an AI sandbox, and online Console installation/update of
-plugins are not delivered. A successful Mini App login does not establish all
+The 2026-10-31 source adds online npm/Loader maintenance in the existing
+platform panel, group-native tool switches, reviewed AI configuration proposals,
+bounded personal conversations, model presets and task history. Successful AI
+turns can return one fixed Markdown result file. See [the usage guide](docs/M1-M4-USAGE.md).
+These additions require the updated application and DSH image; source checks
+and deployment/Telegram delivery receipts remain separate. A successful Mini App login does not establish all
 management workflows. Site parsing is best-effort. The anti-ad adapter is
 present, but its original private classifier implementation is not included in
 this public snapshot.

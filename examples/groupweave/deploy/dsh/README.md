@@ -34,3 +34,32 @@ For direct calls without the Bot UI, use the root
 [`createHarnessBridge`](../../../../index.mjs) API and
 [binding quickstart](../../../../docs/QUICKSTART.md). Receivers and final result
 delivery remain the caller's responsibility.
+
+The image now includes the trusted `result-export.mjs` Cordis plugin. The
+application's existing per-task DSH patch inserts that module by its fixed
+`/opt/actweave/result-export.mjs` path. Rebuild the image before enabling this
+version of Sandbox AI; an older image lacks the producer and fails closed at
+download rather than manufacturing an attachment from host text.
+
+On `session/event`, the observer tracks the committed final assistant text of
+the current turn and synchronously writes `/workspace/exports/result.md` only
+when `turn/end` is `completed` and the UTF-8 text is nonempty and <=64000 bytes.
+It grants no model tools or additional model requests. This uses the real
+`@deepseek-ai/dsh-session@0.2.0-rc.2` event contract, also consumed by the pinned
+headless runner; it does not rely on the locally installed newer CLI version.
+
+Sandbox AI opts into `dsh.downloadResult: true` on the bridge. The bridge
+rechecks current task/native identity and authorizes `download`, invokes the
+OpenShell v0.1.3 native `sandbox download NAME REMOTE LOCAL` command with only
+the fixed export path, validates the downloaded regular file and exact final
+text bytes, then cleans both the sandbox and its private temporary directory.
+Result authorization covers text and attachment together. Telegram delivery
+still belongs to the host and requires its current task/recipient permission;
+attachment bytes are transient and must not enter the task database.
+
+Scoped checks: `node --test test/artifact.test.mjs` at the repository root
+exercises an actual producer file through a local native-CLI stand-in and
+relevant denial/cleanup cases. `test/artifact-pinned-session.mjs` optionally
+exercises this observer with the exact pinned upstream Session package from a
+temporary install. These checks do not claim live OpenShell/Docker, provider,
+or Telegram delivery.

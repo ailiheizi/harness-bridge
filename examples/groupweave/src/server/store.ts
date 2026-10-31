@@ -3,14 +3,17 @@ import { createReadStream } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { backup, DatabaseSync } from 'node:sqlite';
+import { nativeFeatureAllowed, type NativeFeature } from './group-config.js';
+import type { ConversationMessage } from './ai.js';
 import type { Group, Persona, Plugin, Proposal, Role, Task } from '../shared.js';
 
 type StoredGroup = Omit<Group, 'role'>;
 type Row = Record<string, unknown>;
-export const STORAGE_SCHEMA_VERSION = 3;
+export const STORAGE_SCHEMA_VERSION = 4;
 const APPLICATION_ID = 0x47575031;
-const TABLES = ['groups', 'plugins', 'actors', 'memberships', 'private_scopes', 'proposals', 'tasks', 'telegram_deliveries', 'audit_log'] as const;
+const TABLES = ['groups', 'plugins', 'actors', 'memberships', 'private_scopes', 'proposals', 'tasks', 'telegram_deliveries', 'audit_log', 'conversations'] as const;
 const COLUMNS: Record<(typeof TABLES)[number], string[]> = {
+  conversations: ['group_id', 'actor_id', 'json'],
   groups: ['id', 'version', 'json', 'scope', 'telegram_chat_id'],
   plugins: ['id', 'json'], actors: ['id', 'telegram_user_id', 'json'],
   memberships: ['group_id', 'actor_id', 'role', 'verified_at'],
@@ -93,7 +96,7 @@ const DEFAULT_RETENTION: RetentionLimits = {
 // Closed event vocabulary: audit records must not become an arbitrary text/error sink.
 const AUDIT_ACTIONS = new Set(['auth.login', 'group.register', 'group.migrate', 'member.sync', 'rules.preview', 'rules.activate',
   'proposal.create', 'proposal.activate', 'task.reserve', 'task.finish', 'task.execute', 'task.cancel',
-  'plugin.toggle', 'authorization.check', 'access.check', 'storage.prune', 'storage.backup', 'storage.restore',
+  'plugin.toggle', 'plugin.maintenance', 'authorization.check', 'access.check', 'storage.prune', 'storage.backup', 'storage.restore',
   'maintenance.prune', 'maintenance.backup', 'delivery.claim', 'delivery.sent', 'delivery.unknown', 'delivery.withheld']);
 const AUDIT_OUTCOMES = new Set(['allowed', 'denied', 'succeeded', 'failed', 'blocked', 'expired', 'sent', 'unknown', 'withheld',
   'verified', 'registered', 'pending', 'active', 'requested', 'enabled', 'disabled', 'completed', 'removed', 'admin', 'member']);
@@ -113,7 +116,7 @@ function verifyDatabase(db: DatabaseSync): { pages: number; schemaVersion: numbe
     if (JSON.stringify(names) !== JSON.stringify(COLUMNS[table])) throw new StoreError('BACKUP_SCHEMA', '备份列结构不兼容。');
   }
   if ((db.prepare('PRAGMA foreign_key_check').all() as Row[]).length) throw new StoreError('BACKUP_INVALID', '备份关系完整性检查未通过。');
-  for (const [table, column] of [['groups', 'json'], ['plugins', 'json'], ['actors', 'json'], ['private_scopes', 'json'], ['proposals', 'json'], ['tasks', 'draft_json'], ['tasks', 'result_json']] as const) {
+  for (const [table, column] of [['groups', 'json'], ['plugins', 'json'], ['actors', 'json'], ['private_scopes', 'json'], ['proposals', 'json'], ['tasks', 'draft_json'], ['tasks', 'result_json'], ['conversations', 'json']] as const) {
     if (db.prepare(`SELECT 1 FROM ${table} WHERE ${column} IS NOT NULL AND NOT json_valid(${column}) LIMIT 1`).get()) throw new StoreError('BACKUP_INVALID', '备份记录不是有效 JSON。');
   }
   for (const sql of [
@@ -165,6 +168,7 @@ function migrateDatabase(db: DatabaseSync): void {
         CREATE INDEX audit_group ON audit_log(group_id,id);
       `);
       if (version < 3) db.exec(`CREATE TABLE private_scopes(id TEXT PRIMARY KEY,actor_id TEXT NOT NULL UNIQUE REFERENCES actors(id) ON DELETE CASCADE,version INTEGER NOT NULL,json TEXT NOT NULL);`);
+      if (version < 4) db.exec(`CREATE TABLE conversations(group_id TEXT NOT NULL,actor_id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(group_id,actor_id));`);
       db.exec(`PRAGMA user_version=${STORAGE_SCHEMA_VERSION}; PRAGMA application_id=${APPLICATION_ID};`);
       verifyDatabase(db);
       db.exec('COMMIT');
@@ -206,7 +210,7 @@ export class Store {
     catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
   private recover(): void {
-    this.db.exec(`UPDATE tasks SET result_json=json_set(draft_json,'$.status','blocked','$.output','','$.error','先前执行结果未知，未自动重放。') WHERE result_json IS NULL AND expired=0;
+    this.db.exec(`UPDATE tasks SET result_json=json_set(draft_json,'$.status','blocked','$.output','','$.error','服务重启中断；先前执行结果未知，未自动重放。') WHERE result_json IS NULL AND expired=0;
       UPDATE telegram_deliveries SET status='unknown' WHERE status='claimed';`);
   }
   close(): void {
@@ -304,6 +308,7 @@ export class Store {
       }
       this.db.prepare("UPDATE telegram_deliveries SET group_id=?,status=CASE WHEN status='claimed' THEN 'unknown' ELSE status END WHERE group_id=?").run(newId, oldId);
       this.db.prepare('UPDATE audit_log SET group_id=? WHERE group_id=?').run(newId, oldId);
+      this.db.prepare('UPDATE conversations SET group_id=? WHERE group_id=?').run(newId, oldId);
     });
     this.audit({ actorId: 'system', groupId: newId, action: 'group.migrate', outcome: 'completed' });
   }
@@ -346,10 +351,17 @@ export class Store {
   putProposal(proposal: Proposal): void {
     this.db.prepare('INSERT INTO proposals(id,group_id,creator_id,json) VALUES(?,?,?,?)').run(proposal.id, proposal.groupId, proposal.creatorId, JSON.stringify(proposal)); this.prune();
   }
+  cancelProposal(id: string, actorId: string): Proposal | undefined {
+    const proposal = this.proposal(id);
+    if (!proposal || proposal.creatorId !== actorId || this.role(actorId, proposal.groupId) !== 'admin' || proposal.status !== 'pending') return undefined;
+    const cancelled: Proposal = { ...proposal, status: 'cancelled' };
+    this.db.prepare('UPDATE proposals SET json=? WHERE id=?').run(JSON.stringify(cancelled), id);
+    return cancelled;
+  }
   proposal(id: string): Proposal | undefined { return decode<Proposal>(this.db.prepare('SELECT json FROM proposals WHERE id=?').get(id) as Row | undefined); }
   activateProposal(id: string, actorId: string): { proposal: Proposal; conflict: boolean } | undefined {
     return this.transaction(() => {
-      const proposal = this.proposal(id); if (!proposal || this.role(actorId, proposal.groupId) !== 'admin') return undefined;
+      const proposal = this.proposal(id); if (!proposal || proposal.creatorId !== actorId || proposal.status === 'cancelled' || this.role(actorId, proposal.groupId) !== 'admin') return undefined;
       if (proposal.status === 'active') return { proposal, conflict: false };
       const group = this.group(proposal.groupId, actorId)!;
       if (group.version !== proposal.baseVersion) return { proposal, conflict: true };
@@ -393,6 +405,28 @@ export class Store {
     if (!this.role(actorId, groupId)) return [];
     const rows = this.db.prepare("SELECT result_json FROM tasks WHERE group_id=? AND expired=0 AND result_json IS NOT NULL AND (audience='group' OR creator_id=?) ORDER BY rowid DESC LIMIT ?").all(groupId, actorId, this.retention.tasksPerGroup) as Row[];
     return rows.map(row => decode<Task>(row, 'result_json')!);
+  }
+  ownTasks(groupId: string, actorId: string): (Task & { pending: boolean })[] {
+    if (!this.role(actorId, groupId)) return [];
+    return (this.db.prepare('SELECT draft_json,result_json FROM tasks WHERE group_id=? AND creator_id=? AND expired=0 ORDER BY rowid DESC LIMIT 100').all(groupId, actorId) as Row[])
+      .map(row => ({ ...(decode<Task>(row, 'result_json') ?? decode<Task>(row, 'draft_json')!), pending: row.result_json === null }));
+  }
+  /** Background native broadcast admission, never grants actor identity or tool authority. */
+  nativeGroupEnabled(groupId: string, feature: NativeFeature): boolean {
+    const group = decode<StoredGroup>(this.db.prepare("SELECT json FROM groups WHERE id=? AND scope='telegram'").get(groupId) as Row | undefined);
+    return !!group && nativeFeatureAllowed(group.config, feature);
+  }
+  conversation(groupId: string, actorId: string): { messages: ConversationMessage[]; modelProfileId?: string; revision: number; audience?: Task['audience'] } {
+    if (!this.role(actorId, groupId)) throw new StoreError('ACCESS_DENIED', '不能读取当前会话。');
+    return decode(this.db.prepare('SELECT json FROM conversations WHERE group_id=? AND actor_id=?').get(groupId, actorId) as Row | undefined) ?? { messages: [], revision: 0 };
+  }
+  updateConversation(groupId: string, actorId: string, value: ReturnType<Store['conversation']>): void {
+    if (!this.role(actorId, groupId)) throw new StoreError('ACCESS_DENIED', '不能修改当前会话。');
+    // Bounded context, never group history or raw sandbox files.
+    const messages = value.messages.slice(-12).map(message => ({ role: message.role, content: message.content.slice(0, 4000) }));
+    while (Buffer.byteLength(JSON.stringify(messages)) > 24000) messages.shift();
+    this.db.prepare('INSERT INTO conversations(group_id,actor_id,json) VALUES(?,?,?) ON CONFLICT(group_id,actor_id) DO UPDATE SET json=excluded.json')
+      .run(groupId, actorId, JSON.stringify({ ...value, messages }));
   }
   claimTelegramDelivery(taskId: string, groupId: string, actorId: string): boolean {
     const result = this.transaction(() => {

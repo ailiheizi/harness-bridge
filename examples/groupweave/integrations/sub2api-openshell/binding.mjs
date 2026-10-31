@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createSub2ApiAdmission } from '../../src/server/sub2api-admission.js';
+import { prepareNativeGateway } from './native-tls.mjs';
 
 const MODEL_HOST = 'host.openshell.internal';
 const fail = code => new Error(`GROUPWEAVE_SUB2API_${code}`);
@@ -21,8 +22,11 @@ export function validateDeployment(config) {
     || typeof config.apiKey !== 'string' || !config.apiKey.trim()
     || !Number.isSafeInteger(config.meterPort) || config.meterPort < 1024 || config.meterPort > 65535) throw fail('CONFIG_INVALID');
   const gateway = new URL(config.gatewayEndpoint);
-  if (gateway.protocol !== 'http:' || gateway.hostname !== '127.0.0.1' || gateway.username || gateway.password
+  if (!['http:', 'https:'].includes(gateway.protocol) || gateway.hostname !== '127.0.0.1' || gateway.username || gateway.password
     || gateway.pathname !== '/' || gateway.search || gateway.hash) throw fail('GATEWAY_MUST_BE_LOOPBACK');
+  if (gateway.protocol === 'https:' && (!config.gatewayTls || ['caPath', 'certPath', 'keyPath']
+    .some(key => !path.isAbsolute(config.gatewayTls[key] ?? '')))) throw fail('GATEWAY_TLS_REQUIRED');
+  if (gateway.protocol === 'http:' && config.gatewayTls !== undefined) throw fail('GATEWAY_TLS_REQUIRES_HTTPS');
   const upstream = new URL(config.upstreamUrl);
   const upstreamPath = upstream.pathname.replace(/\/+$/u, '');
   const upstreamSegments = upstreamPath.split('/').filter(Boolean);
@@ -49,6 +53,7 @@ export function taskFiles(config, name, dir) {
       landlock: { compatibility: 'hard_requirement' }, process: { run_as_user: '1000', run_as_group: '1000' },
       network_policies: { groupweave_model: { name: 'Task-bound local model admission', endpoints: [endpoint], binaries: [{ path: '/usr/local/bin/node' }] } } },
     patch: [
+      { insert: [{ id: 'groupweave-result-export', name: '/opt/actweave/result-export.mjs' }] },
       { id: 'llm-pi-ai', config: { providers: { 'groupweave-model': { apiKeyEnv: 'GROUPWEAVE_MODEL_TOKEN', api: 'openai-completions',
         baseURL: `http://${MODEL_HOST}:${config.meterPort}/v1`, displayName: 'GroupWeave bounded Sub2API',
         models: [{ id: config.model, name: config.model, maxTokens: 1024, reasoningEfforts: false }] } } } },
@@ -138,6 +143,7 @@ export async function createOpenShellSub2ApiBinding(config) {
         const files = taskFiles(config, name, dir);
         ({ home, xdgConfigHome } = files);
         await mkdir(home, { mode: 0o700 }); await mkdir(xdgConfigHome, { mode: 0o700 });
+        await prepareNativeGateway(config, xdgConfigHome);
         for (const kind of ['profile', 'policy', 'patch']) await writeFile(path.join(dir, `${kind}.json`), JSON.stringify(files[kind]), { mode: 0o600, flag: 'wx' });
         if ((await profiles(false)).some(row => row.id === name) || (await providers(false)).some(row => row.name === name)) throw fail('NAME_COLLISION');
         profileAttempted = true;

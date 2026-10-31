@@ -25,6 +25,10 @@ import { installImageCommands } from './koishi-images.js';
 import { installMarkdownIntegration } from './koishi-render.js';
 import { installSiteParserCommands } from './koishi-site-parser.js';
 import { createStoreAuthorizedSandboxExecutor, loadSandboxBindingModule, sandboxTaskTimeoutMs, type SandboxBindingSource } from './sandbox-wiring.js';
+import { loadSandboxProfiles, type ModelProfile } from './sandbox-profiles.js';
+import { nativeFeatureAllowed, type NativeFeature } from './group-config.js';
+import { installSessionCommands } from './koishi-session.js';
+import { installNaturalRuleCommands } from './rule-proposals.js';
 
 class StartupConfigurationError extends Error {}
 const require = createRequire(import.meta.url);
@@ -50,6 +54,7 @@ export async function startKoishiHost(configPath = resolve(process.env.KOISHI_CO
   let dataDir = '';
   let adminIds: string[] = [];
   let sandboxModule: SandboxBindingSource | undefined;
+  let modelProfiles: ModelProfile[] = [];
   let sandbox: ReturnType<typeof createStoreAuthorizedSandboxExecutor> | undefined;
   const telegramBot = (): Bot | undefined => runtime?.app.bots.find(bot => bot.platform === 'telegram');
   const refreshRole = createTelegramRoleVerifier(telegramBot, () => {
@@ -60,6 +65,7 @@ export async function startKoishiHost(configPath = resolve(process.env.KOISHI_CO
   try {
     runtime = await createKoishiRuntime({
       configPath,
+      maintenanceDir: () => resolve(dataDir, 'plugins'),
       // Native Loader reads .env/.env.local before this hook. Validate before
       // constructing any bot or opening a database from that configuration.
       async beforeCreate() {
@@ -114,10 +120,12 @@ export async function startKoishiHost(configPath = resolve(process.env.KOISHI_CO
         if (ai === '1') {
           const modulePath = process.env.SANDBOX_AI_BINDING_MODULE?.trim();
           if (!modulePath) throw new StartupConfigurationError('ENABLE_AI=1 需要 SANDBOX_AI_BINDING_MODULE 指向已配置的 Docker/DSH 部署绑定。');
-          sandboxModule = await loadSandboxBindingModule(modulePath);
+          const configured = await loadSandboxProfiles(await loadSandboxBindingModule(modulePath), process.env.SANDBOX_AI_MODEL_PROFILES?.trim() || undefined);
+          sandboxModule = configured.binding;
+          modelProfiles = configured.profiles;
         }
       },
-      async setup(ctx) {
+      async setup(ctx, pluginMaintenance) {
         sandbox = sandboxModule ? createStoreAuthorizedSandboxExecutor(sandboxModule, {
           store: () => app!.groupweave.store, refreshRole,
         }) : undefined;
@@ -130,6 +138,7 @@ export async function startKoishiHost(configPath = resolve(process.env.KOISHI_CO
         } : undefined;
         app = await buildApp({
           dataDir, preview: false, nativeKoishi: true,
+          pluginMaintenance, modelProfiles, defaultModelProfileId: modelProfiles.length ? 'default' : undefined,
           aiExecutor: sandboxExecutor,
           assistantExecutor: sandboxExecutor,
           mixedExecutor: sandboxExecutor,
@@ -179,14 +188,32 @@ export async function startKoishiHost(configPath = resolve(process.env.KOISHI_CO
           try { await app!.groupweave.actions.getGroup(telegramActorId(source.actor.userId), telegramGroupId(source.actor.groupId)); return true; }
           catch { return false; }
         };
+        const authorizeNativeFeature = (feature: NativeFeature, authorize: typeof authorizeMedia) => async (session: Parameters<typeof telegramCommandSource>[0]) => {
+          if (!await authorize(session)) return false;
+          const raw = (session.event as typeof session.event & { _data?: { message?: { chat?: { type?: string } } } })._data?.message;
+          if (raw?.chat?.type === 'private') return true;
+          const source = telegramCommandSource(session, true);
+          if (!source) return false;
+          try {
+            const group = await binding.getGroup(source.actor);
+            return !!group && nativeFeatureAllowed(group.config, feature);
+          } catch { return false; }
+        };
+        const authorizeSchedule = authorizeNativeFeature('schedule', authorizeNativeAdmin);
         installGroupCommands(ctx, binding, { aiConfigured: Boolean(sandbox), privateBinding,
-          renderConfigured: renderEnabled, parserConfigured: parserEnabled });
+          renderConfigured: renderEnabled, parserConfigured: parserEnabled,
+          groupAdmin: {
+            cancelRules: (actor, id) => binding.cancelRules!(actor, id),
+            rollbackRules: (actor, id) => binding.rollbackRules!(actor, id),
+          } });
         installAiCommands(ctx, binding, { configured: Boolean(sandbox), privateBinding });
-        installMediaCommands(ctx, { authorize: authorizeMedia });
-        installImageCommands(ctx, { authorize: authorizeMedia });
-        installMarkdownIntegration(ctx, { enabled: renderEnabled, executablePath: renderBrowserPath, authorize: authorizeMedia });
+        installSessionCommands(ctx, binding, { privateBinding });
+        installNaturalRuleCommands(ctx, app.groupweave.store, app.groupweave.actions);
+        installMediaCommands(ctx, { authorize: authorizeNativeFeature('media', authorizeMedia) });
+        installImageCommands(ctx, { authorize: authorizeNativeFeature('image', authorizeMedia) });
+        installMarkdownIntegration(ctx, { enabled: renderEnabled, executablePath: renderBrowserPath, authorize: authorizeNativeFeature('render', authorizeMedia) });
         if (parserEnabled) installSiteParserCommands(ctx, {
-          apiUrl: parserApiUrl, apiKey: parserApiKey, authorize: authorizeMedia,
+          apiUrl: parserApiUrl, apiKey: parserApiKey, authorize: authorizeNativeFeature('parser', authorizeMedia),
           ytDlpPath: parserYtDlpPath,
           bilibiliCookiesFile: process.env.BILIBILI_COOKIES_FILE?.trim() || undefined,
           douyinCookiesFile: process.env.DOUYIN_COOKIES_FILE?.trim() || undefined,
@@ -196,27 +223,32 @@ export async function startKoishiHost(configPath = resolve(process.env.KOISHI_CO
           // Reuse the upstream service with the deployment's existing binary;
           // no runtime downloader or additional execution engine is needed.
           ctx.plugin(FFmpeg, ffmpegPath);
-          installVideoIntegration(ctx, { authorize: authorizeMedia });
-          installTranscodeCommands(ctx, { authorize: authorizeMedia, ffmpegPath, ffprobePath });
+          installVideoIntegration(ctx, { authorize: authorizeNativeFeature('media', authorizeMedia) });
+          installTranscodeCommands(ctx, { authorize: authorizeNativeFeature('media', authorizeMedia), ffmpegPath, ffprobePath });
         }
         installWelcomeIntegration(ctx, binding);
-        installRssIntegration(ctx, { authorize: authorizeNativeAdmin });
-        installScheduleIntegration(ctx, {
+        installRssIntegration(ctx, {
           authorize: authorizeNativeAdmin,
+          enabled: authorizeNativeFeature('rss', authorizeNativeAdmin),
+          allowBroadcast: async (platform, channelId) => platform === 'telegram' && /^-[1-9]\d*$/.test(channelId)
+            && app!.groupweave.store.nativeGroupEnabled(telegramGroupId(channelId), 'rss'),
+        });
+        installScheduleIntegration(ctx, {
+          authorize: authorizeSchedule,
           authorizeLinks: async session => {
             const source = telegramCommandSource(session);
-            if (!source || !await authorizeNativeAdmin(session)) return false;
+            if (!source || !await authorizeSchedule(session)) return false;
             try { return (await binding.getGroup(source.actor))?.config.features.includes('link-cleaner') === true; }
             catch { return false; }
           },
           invokeLinks: async (session, input, idempotencyKey) => {
             const source = telegramCommandSource(session);
-            if (!source || !await authorizeNativeAdmin(session)) return;
+            if (!source || !await authorizeSchedule(session)) return;
             const actor = { ...source.actor, role: 'admin' as const };
             const task = await binding.executeLinks({ actor, input, audience: 'group', updateId: source.updateId,
               messageId: source.messageId, idempotencyKey });
             if (!await binding.claimDelivery(actor, task.id)) return;
-            if (!await authorizeNativeAdmin(session)
+            if (!await authorizeSchedule(session)
               || (binding.deliveryStillAuthorized && !binding.deliveryStillAuthorized(actor, task.id))) {
               await binding.recordDelivery(actor, task.id, 'withheld'); return;
             }

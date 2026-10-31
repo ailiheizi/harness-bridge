@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:26-slim
+ARG NODE_IMAGE=node:26.13.0-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39
 FROM ${NODE_IMAGE} AS build
 WORKDIR /repo
 COPY package.json package-lock.json ./
@@ -67,8 +67,8 @@ COPY --from=build --chown=node:node /repo/src/bridge.mjs ./src/bridge.mjs
 COPY --from=build --chown=node:node /repo/node_modules ./node_modules
 COPY --from=build --chown=node:node /repo/examples/groupweave/package.json /repo/examples/groupweave/package-lock.json ./examples/groupweave/
 # The example build applies its dependency patches before pruning build-only
-# tools. tsx remains a production startup dependency; no installer runs inside
-# the runtime image.
+# tools. tsx and the native npm Installer remain production dependencies.
+# Online trusted plugin writes are restricted to the mounted data directory.
 COPY --from=build --chown=node:node /repo/examples/groupweave/node_modules ./examples/groupweave/node_modules
 COPY --from=build --chown=node:node /repo/examples/groupweave/src ./examples/groupweave/src
 COPY --from=build --chown=node:node /repo/examples/groupweave/koishi.yml ./examples/groupweave/koishi.yml

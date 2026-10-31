@@ -1,7 +1,11 @@
 import type { Context, Session } from 'koishi';
 
 export interface RssIntegrationOptions {
+  /** Current group administrator check, independent of the RSS switch. */
   authorize: (session: Session) => Promise<boolean>;
+  enabled?: (session: Session) => Promise<boolean>;
+  /** Check current policy for background delivery, which has no initiating user. */
+  allowBroadcast?: (platform: string, channelId: string) => Promise<boolean>;
 }
 
 /** Guard the RSS command provided by the upstream Koishi plugin in native config. */
@@ -15,6 +19,25 @@ export function installRssIntegration(ctx: Context, options: RssIntegrationOptio
     command.config.authority = 0;
     if (integrated.has(command)) return;
     integrated.add(command);
+    // Upstream closes over its plugin context and broadcasts from its existing
+    // feed emitter. Adapt only that plugin scope, not global bot sends (which
+    // would also suppress unrelated command replies and scheduled messages).
+    const rssContext: Context = command.ctx.scope.ctx;
+    if (options.allowBroadcast) {
+      const broadcast = rssContext.broadcast.bind(rssContext);
+      Object.defineProperty(rssContext, 'broadcast', { configurable: true, value: async (channels: string[], content: any, forced?: boolean) => {
+        const allowed: string[] = [];
+        for (const target of channels) {
+          const separator = target.indexOf(':');
+          if (separator < 1) continue;
+          try {
+            if (await options.allowBroadcast!(target.slice(0, separator), target.slice(separator + 1))) allowed.push(target);
+          } catch { /* Policy unavailable: do not deliver this item. */ }
+        }
+        return allowed.length ? broadcast(allowed, content, forced) : [];
+      } });
+      rssContext.on('dispose', () => { delete (rssContext as any).broadcast; });
+    }
     // Telegram interaction/command invokes Session.execute directly, outside
     // the ordinary message middleware that flushes observed session models.
     // The upstream RSS command mutates channel.rss, so persist that diff here
@@ -40,6 +63,11 @@ export function installRssIntegration(ctx: Context, options: RssIntegrationOptio
     if (!(await options.authorize(session))) {
       await session.send('仅当前群组管理员可以管理 RSS 订阅。');
       throw new Error('仅当前群组管理员可以管理 RSS 订阅。');
+    }
+    const commandOptions = argv.options as { list?: boolean; remove?: boolean } | undefined;
+    if (!commandOptions?.list && !commandOptions?.remove && options.enabled && !await options.enabled(session)) {
+      await session.send('本群 RSS 已关闭，仍可查看或取消已有订阅。');
+      throw new Error('本群 RSS 已关闭。');
     }
   });
 }

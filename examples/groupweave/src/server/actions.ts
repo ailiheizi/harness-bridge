@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Group, GroupConfig, Proposal, Task } from '../shared.js';
+import type { ConversationMessage, TaskArtifact } from './ai.js';
+import { NATIVE_FEATURES, parseNativeFeatureRule } from './group-config.js';
 import { Store } from './store.js';
 
 export interface ExecutorRequest {
@@ -14,11 +16,11 @@ export interface ExecutorRequest {
   /** Permission counters captured on the reserved task before execution. */
   authorization: { platformVersion: number; groupVersion: number; codePlatformVersion?: number; codeGroupVersion?: number };
   input: string;
-  options: Pick<GroupConfig, 'deduplicate' | 'sort' | 'maxItems' | 'antiadPromptThreshold' | 'antiadActionThreshold' | 'antiadStopwords'> & { language?: GroupConfig['language']; welcomeText?: string; groupTitle?: string; allowLinkTool?: boolean };
+  options: Pick<GroupConfig, 'deduplicate' | 'sort' | 'maxItems' | 'antiadPromptThreshold' | 'antiadActionThreshold' | 'antiadStopwords'> & { language?: GroupConfig['language']; welcomeText?: string; groupTitle?: string; allowLinkTool?: boolean; conversation?: ConversationMessage[]; modelProfileId?: string };
   audience: Task['audience'];
   authorized: boolean;
 }
-export type Executor = (request: ExecutorRequest, signal?: AbortSignal) => Promise<{ output: string; modelCalls: number; usage?: Task['usage']; toolCalls?: number }>;
+export type Executor = (request: ExecutorRequest, signal?: AbortSignal) => Promise<{ output: string; modelCalls: number; usage?: Task['usage']; toolCalls?: number; artifact?: TaskArtifact }>;
 export class ApiError extends Error {
   constructor(readonly statusCode: number, readonly code: string, message: string) { super(message); }
 }
@@ -77,8 +79,9 @@ export function positiveInteger(value: unknown, name: string, max: number): numb
 }
 
 function configPatch(value: unknown, knownFeatures: Set<string>): Partial<GroupConfig> {
-  const body = objectBody(value, ['responseMode', 'language', 'features', 'deduplicate', 'sort', 'maxItems', 'welcomeText', 'antiadPromptThreshold', 'antiadActionThreshold', 'antiadStopwords']);
+  const body = objectBody(value, ['responseMode', 'language', 'features', 'deduplicate', 'sort', 'maxItems', 'welcomeText', 'antiadPromptThreshold', 'antiadActionThreshold', 'antiadStopwords', 'nativeFeatures']);
   const schema = z.object({
+    nativeFeatures: z.array(z.enum(NATIVE_FEATURES)).max(NATIVE_FEATURES.length).refine(items => new Set(items).size === items.length).optional(),
     responseMode: z.enum(['mention', 'command']).optional(),
     language: z.enum(['zh', 'en']).optional(),
     features: z.array(z.string()).max(knownFeatures.size).refine(items => items.every(id => knownFeatures.has(id)) && new Set(items).size === items.length).optional(),
@@ -101,7 +104,10 @@ function parseRules(text: string, initial: GroupConfig): { candidate: GroupConfi
   const warnings: string[] = [];
   for (const raw of text.split(/[，,；;\n。.!！]/).filter(item => item.trim())) {
     const clause = raw.toLowerCase().replace(/\s+/g, '').replace(/^(请|帮我)/, '');
-    if (/^(只@回复|只在@时回复|只在被@时回复|被@时回复|仅@回复|仅@机器人时回复|只响应@|mention)$/.test(clause)) candidate.responseMode = 'mention';
+    const native = parseNativeFeatureRule(raw, candidate);
+    if (native?.nativeFeatures) {
+      candidate.nativeFeatures = native.nativeFeatures;
+    } else if (/^(只@回复|只在@时回复|只在被@时回复|被@时回复|仅@回复|仅@机器人时回复|只响应@|mention)$/.test(clause)) candidate.responseMode = 'mention';
     else if (/^(命令触发|只使用命令|只响应命令|仅响应命令|仅命令|只在命令时回复|command)$/.test(clause)) candidate.responseMode = 'command';
     else if (/^(中文|使用中文|用中文|中文回复|用中文回复|用中文回答|zh)$/.test(clause)) candidate.language = 'zh';
     else if (/^(英文|英语|使用英文|用英文|英文回复|用英文回复|用英文回答|english|en)$/.test(clause)) candidate.language = 'en';
@@ -135,6 +141,7 @@ function parseRules(text: string, initial: GroupConfig): { candidate: GroupConfi
 
 function describeChanges(before: GroupConfig, after: GroupConfig): string[] {
   const changes: string[] = [];
+  if (JSON.stringify(before.nativeFeatures) !== JSON.stringify(after.nativeFeatures)) changes.push(`原生功能：${(before.nativeFeatures ?? NATIVE_FEATURES).join('、')} → ${(after.nativeFeatures ?? NATIVE_FEATURES).join('、') || '关闭'}`);
   if (before.responseMode !== after.responseMode) changes.push(`回复模式：${before.responseMode === 'mention' ? '只 @ 回复' : '命令触发'} → ${after.responseMode === 'mention' ? '只 @ 回复' : '命令触发'}`);
   if (before.language !== after.language) changes.push(`语言：${before.language === 'zh' ? '中文' : '英文'} → ${after.language === 'zh' ? '中文' : '英文'}`);
   if (JSON.stringify(before.features) !== JSON.stringify(after.features)) changes.push(`功能组合：${before.features.join('、') || '无'} → ${after.features.join('、') || '无'}`);
@@ -152,6 +159,8 @@ function describeChanges(before: GroupConfig, after: GroupConfig): string[] {
 }
 
 export interface GroupActionOptions {
+  modelProfiles?: { id: string; label: string }[];
+  defaultModelProfileId?: string;
   executor?: Executor;
   aiExecutor?: Executor;
   echoExecutor?: Executor;
@@ -172,6 +181,9 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
   if (!Number.isSafeInteger(maxActiveTasks) || maxActiveTasks < 1 || maxActiveTasks > 8) {
     throw new Error('maxActiveTasks 必须为 1 至 8 的可信部署设置。');
   }
+  const profiles = (options.modelProfiles ?? []).map(item => Object.freeze({ ...item }));
+  if (profiles.some(item => !/^[a-zA-Z0-9_-]{1,40}$/.test(item.id) || !item.label.trim()) || new Set(profiles.map(item => item.id)).size !== profiles.length || (options.defaultModelProfileId && !profiles.some(item => item.id === options.defaultModelProfileId))) throw new Error('Invalid trusted model profiles');
+  const artifacts = new Map<string, { artifact: TaskArtifact; expires: number }>();
   let activeTasks = 0;
   const activeGroups = new Set<string>();
   const activeControllers = new Set<AbortController>();
@@ -212,7 +224,7 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
     if (manager && group.role !== 'admin') return deny(403, 'MANAGER_REQUIRED', '只有本群管理员可以提出和启用配置。');
     return group;
   }
-  async function previewRules(actorId: string, groupId: string, value: unknown): Promise<Proposal> {
+  async function previewRules(actorId: string, groupId: string, value: unknown, interpretation?: { warnings: string[]; text: string }): Promise<Proposal> {
     const group = await getGroup(actorId, groupId, true);
     const body = objectBody(value, ['text', 'baseVersion', 'config']);
     const baseVersion = positiveInteger(body.baseVersion, '配置版本', Number.MAX_SAFE_INTEGER);
@@ -225,8 +237,8 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
     const proposal: Proposal = {
       id: randomUUID(), groupId: group.id, creatorId: actorId, baseVersion,
       before: structuredClone(group.config), candidate: parsed.candidate,
-      warnings: [...parsed.warnings, ...featureWarnings(parsed.candidate)], changes: describeChanges(group.config, parsed.candidate),
-      text, status: 'pending', createdAt: new Date().toISOString(),
+      warnings: [...parsed.warnings, ...featureWarnings(parsed.candidate), ...(interpretation?.warnings ?? [])], changes: describeChanges(group.config, parsed.candidate),
+      text: interpretation?.text ?? text, status: 'pending', createdAt: new Date().toISOString(),
     };
     store.putProposal(proposal);
     store.audit({ actorId, groupId: group.id, action: 'rules.preview', targetId: proposal.id, outcome: 'pending' });
@@ -237,6 +249,8 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
     objectBody(value ?? {}, []);
     const proposal = store.proposal(id) ?? deny(404, 'NOT_FOUND', '找不到可访问的提案。');
     await getGroup(actorId, proposal.groupId, true);
+    if (proposal.creatorId !== actorId) return deny(404, 'NOT_FOUND', '找不到本人提案。');
+    if (proposal.status === 'cancelled') return deny(409, 'PROPOSAL_CANCELLED', '提案已取消。');
     if (proposal.status === 'active') return proposal;
     if (proposal.warnings.length || featureWarnings(proposal.candidate).length) return deny(422, 'PROPOSAL_BLOCKED', '提案仍有未识别规则、停用功能或缺失能力，不能启用。');
     const activated = store.activateProposal(proposal.id, actorId)!;
@@ -249,7 +263,7 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
     return activated.proposal;
   }
 
-  async function runTask(actorId: string, groupId: string, value: unknown, isActive = () => true, callerSignal?: AbortSignal): Promise<Task> {
+  async function runTask(actorId: string, groupId: string, value: unknown, isActive = () => true, callerSignal?: AbortSignal, execution: { conversation?: boolean } = {}): Promise<Task> {
     if (closed) return deny(503, 'SERVICE_CLOSING', '服务正在关闭，不接受新任务。');
     const group = await getGroup(actorId, groupId);
     // Role refresh is asynchronous. A request that crossed shutdown while it
@@ -271,7 +285,7 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
     if (groupId.startsWith('tg-dm:') && (audience !== 'private' || !['assistant', 'digest'].includes(featureId))) {
       return deny(403, 'PRIVATE_SCOPE_OPERATION', '私人会话只支持本人问答与摘要结果。');
     }
-    if (isAi && body.acknowledgeExternalProcessing !== true) return deny(400, 'EXTERNAL_PROCESSING_REVIEW_REQUIRED', 'AI 会将本次输入及适用时的代码结果发送给 DeepSeek，需要明确确认后使用。');
+    if (isAi && body.acknowledgeExternalProcessing !== true) return deny(400, 'EXTERNAL_PROCESSING_REVIEW_REQUIRED', 'AI 会将本次输入、问答适用的本人当前会话上下文及代码结果发送给平台预配置的第三方模型，需要明确确认后使用。');
     if (!isAi && 'acknowledgeExternalProcessing' in body) return deny(400, 'UNKNOWN_FIELD', '此固定功能不接受第三方处理声明。');
     if (isAi && Buffer.byteLength(input) > 8000) return deny(400, 'INPUT_TOO_LARGE', 'AI 输入最多 8000 字节。');
     let key: string | undefined;
@@ -301,14 +315,26 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
     const codeCapability = store.plugin('link-cleaner');
     const allowLinkTool = featureId === 'assistant' && group.config.features.includes('link-cleaner') && codeCapability?.enabled === true && codeCapability.available;
     const codeVersions = featureId === 'link-brief' || allowLinkTool ? store.permissionVersions(group.id, 'link-cleaner') : undefined;
+    // The native translation command uses this exact fixed wrapper and is a one-shot transformation.
+    const translation = featureId === 'assistant' && /^Translate the following text into [^\r\n]{1,40}\. Preserve its meaning and tone\. Return only the translation\.\n\nText:\n/u.test(input);
+    const rememberConversation = featureId === 'assistant' && execution.conversation !== false && !translation;
+    const savedConversation = isAi ? store.conversation(group.id, actorId) : undefined;
+    // A private result must never become context for a later group-visible answer.
+    const conversation: ReturnType<Store['conversation']> | undefined = rememberConversation && savedConversation && savedConversation.audience !== audience
+      ? { ...savedConversation, messages: [], audience, revision: savedConversation.revision + 1 } : savedConversation;
+    const modelProfileId = isAi ? conversation?.modelProfileId ?? options.defaultModelProfileId : undefined;
+    if (modelProfileId && !profiles.some(item => item.id === modelProfileId)) { release?.(); return deny(409, 'MODEL_UNAVAILABLE', '先前模型配置已移除，请重新选择。'); }
+    let artifact: TaskArtifact | undefined;
     const task: Task = {
       id: randomUUID(), groupId: group.id, creatorId: actorId, featureId, audience, configVersion: group.version,
+      ...(modelProfileId ? { modelProfileId } : {}),
       createdAt: new Date().toISOString(), durationMs: 0, modelCalls: 0, input, output: '', status: 'blocked',
       authorization: { ...store.permissionVersions(group.id, featureId), ...(codeVersions ? { codePlatformVersion: codeVersions.platformVersion, codeGroupVersion: codeVersions.groupVersion } : {}) },
       error: '先前执行未获得确定结果；请人工核对，不能自动重放。',
     };
     try { store.reserveTask(task, key, requestHash); }
     catch (error) { release?.(); throw error; }
+    if (rememberConversation && conversation && savedConversation?.audience !== audience) store.updateConversation(group.id, actorId, conversation);
     const startedAt = performance.now();
     let executionSignal: AbortSignal | undefined;
     if (!plugin.enabled || !plugin.available) {
@@ -327,7 +353,8 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
           actorId, groupId: group.id, input,
           options: Object.freeze({ deduplicate: group.config.deduplicate, sort: group.config.sort, maxItems: group.config.maxItems, language: group.config.language,
             ...(featureId === 'welcome' ? { welcomeText: group.config.welcomeText, groupTitle: group.name } : {}),
-            ...(featureId === 'assistant' ? { allowLinkTool } : {}),
+            ...(isAi && modelProfileId ? { modelProfileId } : {}),
+            ...(featureId === 'assistant' ? { allowLinkTool, ...(rememberConversation ? { conversation: conversation!.messages } : {}) } : {}),
             ...(featureId === 'antiad' ? { antiadPromptThreshold: group.config.antiadPromptThreshold ?? 0.55,
               antiadActionThreshold: group.config.antiadActionThreshold ?? 0.9,
               antiadStopwords: [...(group.config.antiadStopwords ?? [])] } : {}) }),
@@ -345,7 +372,7 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
           if ((plugin.kind === 'code' && result.modelCalls !== 0) || (featureId === 'digest' && result.modelCalls !== 1)
             || (featureId === 'link-brief' && (!((result.modelCalls === 1 || result.modelCalls === 2) && result.toolCalls === 1)))
             || (featureId === 'assistant' && !((result.modelCalls === 1 && result.toolCalls === 0) || (result.modelCalls === 2 && result.toolCalls === 1)))) { task.status = 'failed'; task.error = '模型或代码调用证据不符合此功能的执行边界，结果未交付。'; }
-          else { task.status = 'succeeded'; task.output = result.output; if (isAi) task.usage = result.usage ?? null; if (featureId === 'link-brief' || featureId === 'assistant') task.toolCalls = result.toolCalls; delete task.error; }
+          else { artifact = result.artifact; task.status = 'succeeded'; task.output = result.output; if (isAi) task.usage = result.usage ?? null; if (featureId === 'link-brief' || featureId === 'assistant') task.toolCalls = result.toolCalls; delete task.error; }
         }
       } catch (error) {
         task.status = 'failed';
@@ -386,8 +413,20 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
         task.error = '执行期间会话、群权限或功能授权已失效；迟到结果未交付，执行结果需人工核对，没有重跑。';
       }
       task.durationMs = Math.max(0, Math.round(performance.now() - startedAt));
+      if (task.status === 'succeeded' && artifact) {
+        if (!/^[a-zA-Z0-9_.-]{1,80}$/.test(artifact.name) || artifact.mediaType !== 'text/markdown' || !(artifact.data instanceof Uint8Array) || artifact.data.byteLength > 256000) { task.status = 'failed'; task.output = ''; task.error = '产物不符合有界文件约定，未交付。'; artifact = undefined; }
+        else task.artifact = { name: artifact.name, mediaType: artifact.mediaType, bytes: artifact.data.byteLength };
+      }
       const finished = store.finishTask(task);
       if (finished === false) { task.status = 'blocked'; task.output = ''; task.error = '任务归属或终态已变化，旧执行结果未写入或交付，没有重放。'; return task; }
+      if (task.status === 'succeeded') {
+        if (artifact) {
+          for (const [id, value] of artifacts) if (value.expires <= Date.now()) artifacts.delete(id);
+          while (artifacts.size >= 16) artifacts.delete(artifacts.keys().next().value!);
+          artifacts.set(task.id, { artifact, expires: Date.now() + 5 * 60_000 });
+        }
+        if (rememberConversation && conversation && store.conversation(group.id, actorId).audience === audience && store.conversation(group.id, actorId).revision === conversation.revision) store.updateConversation(group.id, actorId, { ...store.conversation(group.id, actorId), messages: [...conversation.messages, { role: 'user', content: input }, { role: 'assistant', content: task.output }] });
+      }
       store.audit({ actorId, groupId: group.id, action: 'task.finish', targetId: task.id, outcome: task.status });
       return task;
     } finally { taskControllers.delete(task.id); }
@@ -395,6 +434,37 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
 
   return {
     getGroup, previewRules, activateRules, runTask,
+    async cancelRules(actorId: string, id: string) {
+      const proposal = store.proposal(id) ?? deny(404, 'NOT_FOUND', '找不到提案。');
+      await getGroup(actorId, proposal.groupId, true);
+      return store.cancelProposal(id, actorId) ?? deny(409, 'PROPOSAL_NOT_PENDING', '仅能取消本人待确认提案。');
+    },
+    async rollbackRules(actorId: string, id: string) {
+      const previous = store.proposal(id) ?? deny(404, 'NOT_FOUND', '找不到提案。');
+      const group = await getGroup(actorId, previous.groupId, true);
+      if (previous.creatorId !== actorId || previous.status !== 'active') return deny(409, 'ROLLBACK_INVALID', '只能从本人生效提案创建回滚预览。');
+      return previewRules(actorId, group.id, { config: { ...previous.before, nativeFeatures: previous.before.nativeFeatures ?? [...NATIVE_FEATURES] }, baseVersion: group.version });
+    },
+    async ownTasks(actorId: string, groupId: string) { await getGroup(actorId, groupId); return store.ownTasks(groupId, actorId); },
+    async ownTask(actorId: string, groupId: string, id: string) { await getGroup(actorId, groupId); return store.ownTasks(groupId, actorId).find(task => task.id === id) ?? deny(404, 'NOT_FOUND', '找不到本人当前会话任务。'); },
+    async resetConversation(actorId: string, groupId: string) {
+      await getGroup(actorId, groupId); const state = store.conversation(groupId, actorId);
+      store.updateConversation(groupId, actorId, { ...state, messages: [], revision: state.revision + 1 });
+    },
+    async listModels(actorId: string, groupId: string) { await getGroup(actorId, groupId); return { profiles, selectedId: store.conversation(groupId, actorId).modelProfileId ?? options.defaultModelProfileId }; },
+    async selectModel(actorId: string, groupId: string, id: string) {
+      await getGroup(actorId, groupId);
+      if (!profiles.some(item => item.id === id)) return deny(400, 'MODEL_UNAVAILABLE', '只能选择平台预配置模型 ID。');
+      const state = store.conversation(groupId, actorId);
+      store.updateConversation(groupId, actorId, { ...state, modelProfileId: id });
+      return { selectedId: id };
+    },
+    takeTaskArtifact(actorId: string, taskId: string): TaskArtifact | undefined {
+      const row = store.task(taskId), item = artifacts.get(taskId);
+      if (!row?.task || row.creatorId !== actorId || !store.taskAuthorized(row.task)) return undefined;
+      artifacts.delete(taskId);
+      return item && item.expires > Date.now() ? item.artifact : undefined;
+    },
     async ownActiveTasks(actorId: string, groupId: string) {
       await getGroup(actorId, groupId);
       return [...taskControllers.entries()].filter(([, task]) => task.actorId === actorId && task.groupId === groupId).map(([id, task]) => ({ id, featureId: task.featureId }));
@@ -413,7 +483,7 @@ export function createGroupActions(store: Store, options: GroupActionOptions = {
       for (const active of taskControllers.values()) if ((active.featureId === featureId || (featureId === 'link-cleaner' && ['link-brief', 'assistant'].includes(active.featureId))) && (!groupId || active.groupId === groupId)) active.controller.abort(new Error('功能授权已撤销。'));
     },
     close() {
-      closed = true;
+      closed = true; artifacts.clear();
       for (const controller of activeControllers) controller.abort(new Error('服务正在关闭。'));
       for (const task of taskControllers.values()) task.controller.abort(new Error('服务正在关闭。'));
     },

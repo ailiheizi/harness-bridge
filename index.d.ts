@@ -1,4 +1,4 @@
-export type NativeOperation = 'create' | 'get' | 'list' | 'upload' | 'exec' | 'stop' | 'delete';
+export type NativeOperation = 'create' | 'get' | 'list' | 'upload' | 'download' | 'exec' | 'stop' | 'delete';
 export type ExecutionEvidence = 'verified' | 'unverified' | 'not-run';
 export type CleanupStatus = 'verified' | 'unverified' | 'not-created';
 
@@ -35,6 +35,8 @@ export interface BridgeSuccess {
   taskId: string;
   status: 'completed';
   output: string;
+  /** Fixed bounded workload export, collected before sandbox cleanup and released with result authorization. */
+  artifact?: { name: string; mediaType: string; data: Uint8Array };
   sandbox: NativeSandboxIdentity;
   cleanup: { status: 'verified' };
   evidence: BridgeEvidence & { execution: 'verified'; cleanup: 'verified'; dshSessionId: string; nativeExitCode: 0 };
@@ -87,6 +89,8 @@ export interface HarnessBridgeOptions {
   dsh: {
     /** App-owned patch for the pinned DSH headless profile. */
     patchPath: string;
+    /** Download only /workspace/exports/result.md (regular UTF-8 final text, <=64000 bytes). Requires the workload turn observer. */
+    downloadResult?: boolean;
     /** Remote directory the patch exposes to the native DSH skill loader. */
     skillRoot?: string;
   };

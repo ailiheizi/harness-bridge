@@ -52,11 +52,13 @@ and quoted `/digest` delivery through the configured provider path. Those
 receipts apply to those tasks and do not establish all combinations or
 production-wide guarantees. See the [fourteenth acceptance batch](examples/groupweave/docs/ACCEPTANCE-20261022-NATIVE.md).
 
-Known gaps remain visible: anonymous site parsing is best-effort and some
-remote samples fail; Console online plugin installation is not implemented;
-AI sandbox file artifact return is not implemented; multi-turn memory and
-broad plugin permissions are not implemented. The application record also
-lists unverified combinations and deployment limits. See its [TODO](examples/groupweave/docs/TODO.md),
+The 2026-10-31 source adds native online plugin maintenance, per-group tool
+switches and reviewable AI configuration, bounded personal conversations,
+task history, approved model selection, and fixed Markdown sandbox results.
+See the [usage guide](examples/groupweave/docs/M1-M4-USAGE.md). Anonymous site
+parsing remains best-effort; arbitrary plugin code is trusted platform code.
+The application record distinguishes implementation, deployment and real
+Telegram evidence; a source change alone is not a live delivery receipt. See its [TODO](examples/groupweave/docs/TODO.md),
 [acceptance](examples/groupweave/docs/ACCEPTANCE-20261022-NATIVE.md), and
 [security notes](SECURITY.md).
 
@@ -100,9 +102,9 @@ GroupWeave's complete adapter is in [`examples/groupweave/src/server/sandbox-ai.
 The host owns authenticated identity, current permissions, persistence,
 capacity, accounting and delivery. OpenShell owns sandbox lifecycle and DSH
 owns its Harness behavior. The bridge submits one fixed native command and
-returns bounded text and execution/cleanup evidence. It does not provide
-Telegram APIs, arbitrary shell access, a model router, or file artifacts from
-the sandbox.
+returns bounded text and execution/cleanup evidence. An opt-in
+`dsh.downloadResult` collects one fixed, verified `result.md` before cleanup.
+It does not provide Telegram APIs, arbitrary shell access or a model router.
 
 The implementation uses OpenShell's Docker path and DSH headless only. A
 completed Harness turn is not proof of model billing, business correctness or

@@ -40,6 +40,8 @@ test('native RSS command validates, lists, removes, and restores group subscript
   const configPath = path.join(dir, 'koishi.yml');
   let itemTitle = 'First item';
   let requestCount = 0;
+  let rssEnabled = true;
+  let disabledDeliveryChecks = 0;
   TestBot.sent = [];
   const feedServer = createServer((_request, response) => {
     requestCount++;
@@ -59,7 +61,10 @@ test('native RSS command validates, lists, removes, and restores group subscript
   await writeFile(configPath, `plugins:\n  database-sqlite:\n    path: ${path.join(dir, 'rss.sqlite')}\n  rss:\n    timeout: 3000\n    refresh: 250\n`);
   const setup = (app: Context) => {
     app.plugin(TestBot);
-    installRssIntegration(app, { authorize: async session => {
+    installRssIntegration(app, { enabled: async () => rssEnabled, allowBroadcast: async (platform, channelId) => {
+      if (!rssEnabled) disabledDeliveryChecks++;
+      return rssEnabled && platform === 'rss-test' && channelId === 'group-1';
+    }, authorize: async session => {
       return session.guildId === 'group-1' && session.userId === 'admin-1';
     } });
   };
@@ -106,6 +111,15 @@ test('native RSS command validates, lists, removes, and restores group subscript
     await new Promise(resolve => setTimeout(resolve, 350));
     assert.equal(TestBot.sent.length, restartSendStart, 'restart must not push the existing item again');
     assert.match(await (await commands())('-l'), new RegExp(feedUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    rssEnabled = false;
+    itemTitle = 'Disabled item';
+    const beforeDisabledRequests = requestCount;
+    await waitFor(() => requestCount >= beforeDisabledRequests + 2, 3000);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.ok(disabledDeliveryChecks > 0, 'upstream new-item delivery must recheck current group policy');
+    assert.equal(TestBot.sent.some(message => textSegmentContent(message.content)?.includes('Disabled item')), false,
+      'existing upstream subscription must not deliver after the current group switch closes');
+    assert.match(await (await commands())('-l'), /feed.xml/, 'disabled group can still list subscriptions');
     assert.match(await (await commands())(`-r ${feedUrl}`), /取消订阅成功/);
     assert.match(await (await commands())('-l'), /未订阅任何链接/);
   } finally {

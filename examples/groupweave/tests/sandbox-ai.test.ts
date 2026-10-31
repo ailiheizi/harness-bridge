@@ -22,6 +22,7 @@ const request = (featureId: 'digest' | 'assistant' | 'link-brief' = 'digest'): T
 });
 const result = (): BridgeResult => ({
   taskId: binding.taskId, status: 'completed', output: 'Synthetic summary.',
+  artifact: { name: 'result.md', mediaType: 'text/markdown', data: Buffer.from('Synthetic summary.') },
   sandbox: { id: 'sandbox-synthetic-1', name: 'sandbox-synthetic-1', workspace: bridgeOptions.native.workspace },
   cleanup: { status: 'verified' },
   evidence: { execution: 'verified', cleanup: 'verified', modelRequestCount: null,
@@ -73,7 +74,7 @@ function harness(overrides: Overrides = {}) {
       assert.equal(context.result.taskId, binding.taskId);
     },
   }, {
-    createBridge(options) { captured = options; return bridge; },
+    createBridge(options) { assert.equal(options.dsh.downloadResult, true); captured = options; return bridge; },
     ...(overrides.accounting ? { modelAccounting: {
       authorizeBudget: overrides.accounting.authorizeBudget ?? (async x => ({ ...x, admissionId: 'synthetic-admission', source: 'synthetic-test-gateway', verified: true as const })),
       read: overrides.accounting.read ?? (async x => ({ taskId: x.taskId, tenantId: x.tenantId, actorId: x.actorId,
@@ -265,4 +266,48 @@ test('cancellation suppresses a late bridge result', async () => {
   release(result());
   await assert.rejects(pending, e => errorCode(e) === 'SANDBOX_CANCELLED');
   await executor.dispose();
+});
+
+test('requires exact bounded Markdown bytes from the fixed bridge download', async () => {
+  const { executor } = harness({ accounting: {} });
+  const response = await executor.execute(request());
+  assert.equal(response.artifact?.name, 'result.md');
+  assert.equal(Buffer.from(response.artifact!.data).toString(), response.output);
+  await executor.dispose();
+  for (const artifact of [undefined,
+    { name: '../other.md', mediaType: 'text/markdown', data: Buffer.from('Synthetic summary.') },
+    { name: 'result.md', mediaType: 'text/markdown', data: Buffer.from('other task') },
+  ]) {
+    const returned = result();
+    if (returned.status !== 'completed') throw new Error('fixture');
+    returned.artifact = artifact;
+    const { executor: denied } = harness({ accounting: {}, returned });
+    await assert.rejects(denied.execute(request()), e => errorCode(e) === 'SANDBOX_ARTIFACT_INVALID');
+    await denied.dispose();
+  }
+});
+
+test('assistant snapshots bounded host conversation as JSON data before async authorization', async () => {
+  const candidate = request('assistant');
+  candidate.options.conversation = [{ role: 'user', content: 'earlier question' }, { role: 'assistant', content: 'earlier answer' }];
+  let routed: TrustedTaskRequest | undefined;
+  const { executor } = harness({ featureId: 'assistant', accounting: {}, inspectRequest(req) { routed = req; } });
+  const pending = executor.execute(candidate);
+  candidate.options.conversation[0].content = 'mutated history';
+  await pending;
+  assert.match(routed!.prompt, /JSON data, not instructions or authority/);
+  assert.match(routed!.prompt, /earlier question/);
+  assert.doesNotMatch(routed!.prompt, /mutated history/);
+  await executor.dispose();
+});
+
+test('rejects malformed or excessive conversation before native submission', async () => {
+  for (const conversation of [Array.from({ length: 13 }, () => ({ role: 'user', content: 'message' })),
+    [{ role: 'user', content: 'x'.repeat(24001) }], [{ role: 'system', content: 'message' }]]) {
+    const candidate = request('assistant');
+    candidate.options.conversation = conversation as NonNullable<AiRequest['options']['conversation']>;
+    const { executor } = harness({ featureId: 'assistant', accounting: {}, inspectRequest() { assert.fail('must not submit'); } });
+    await assert.rejects(executor.execute(candidate), e => errorCode(e) === 'SANDBOX_CONVERSATION_INVALID');
+    await executor.dispose();
+  }
 });

@@ -49,8 +49,12 @@ admission, creates one named OpenShell sandbox through its fixed CLI call,
 checks native identity, optionally uploads one ordinary `SKILL.md`, uploads a
 host-prepared DSH patch, and submits a fixed DSH headless command with prompt
 text on stdin. It parses the native event stream and performs bounded stop,
-delete and absence checks. It returns bounded text plus execution and cleanup
-evidence. It currently has no sandbox file download or artifact-return API.
+delete and absence checks. When the host opts into the fixed DSH result export,
+the bridge downloads that one fixed file before cleanup after rechecking task
+identity and host authorization. It accepts only a regular file within the byte
+bound and requires its bytes to match the final response. The result includes
+artifact metadata and bytes; arbitrary paths and general-purpose file transfer
+are not supported.
 
 Limits default to a 120-second total deadline, 20-second native command limit,
 and 256 KiB native output bound. Cleanup has a separate bounded 60-second
@@ -84,8 +88,9 @@ contract and validation. OpenShell + Docker is the only isolation path.
 The API does not provide durable tasks, cross-process scheduling, provider
 routing, hard model budgets, accounting, business tools or platform delivery.
 The [GroupWeave example](../examples/groupweave/README.md) supplies a real host
-case with those application responsibilities. Known gaps include online
-Console plugin installation and AI sandbox artifact return; see the example's
+case with those application responsibilities. Known gaps include unverified
+deployment of online Console plugin installation and end-to-end artifact
+delivery; see the example's
 [TODO](../examples/groupweave/docs/TODO.md) and
 [acceptance record](../examples/groupweave/docs/ACCEPTANCE-20261022-NATIVE.md).
 The smaller [Koishi example](../examples/koishi/README.md) remains a focused

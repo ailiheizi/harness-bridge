@@ -1,3 +1,4 @@
+import type { PluginMaintenance } from './plugin-maintenance.js';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyCookie from '@fastify/cookie';
@@ -8,9 +9,13 @@ import { resolve, join } from 'node:path';
 import type { Group, Me } from '../shared.js';
 import { PERSONAS, Store } from './store.js';
 import { ApiError, deny, objectBody, requiredString, presentTask, createGroupActions, type Executor } from './actions.js';
+import { createRuleProposals } from './rule-proposals.js';
 export type { Executor, ExecutorRequest } from './actions.js';
 
 export interface AppOptions {
+  pluginMaintenance?: PluginMaintenance;
+  modelProfiles?: { id: string; label: string }[];
+  defaultModelProfileId?: string;
   /** Native application host; distinct from availability of the legacy Echo task. */
   nativeKoishi?: boolean;
   dataDir?: string;
@@ -91,6 +96,7 @@ export async function buildApp(options: AppOptions = {}) {
   const platformAllowed = (id: string) => preview ? Boolean(store.persona(id)?.platformAdmin) : platformIds.has(id);
 
   const actions = createGroupActions(store, options);
+  const interpretRules = createRuleProposals(store, actions);
   app.decorate('groupweave', { store, actions });
   const invalidate = (token: string) => { sessions.get(token)?.abort.abort(new Error('会话已失效。')); sessions.delete(token); };
   const readSession = (request: FastifyRequest): Session | undefined => {
@@ -197,13 +203,56 @@ export async function buildApp(options: AppOptions = {}) {
   app.get<{ Params: { id: string } }>('/api/groups/:id', async request => ({ group: await groupFor(request, request.params.id), plugins: store.plugins() }));
 
   app.post<{ Params: { id: string } }>('/api/groups/:id/proposals', async request => actions.previewRules(auth(request).personaId, request.params.id, request.body));
+  app.post<{ Params: { id: string } }>('/api/groups/:id/proposals/interpret', async request => {
+    const session = auth(request);
+    return interpretRules(session.personaId, request.params.id, request.body, session.abort.signal);
+  });
   app.get<{ Params: { id: string } }>('/api/proposals/:id', async request => {
     const proposal = store.proposal(request.params.id) ?? deny(404, 'NOT_FOUND', '找不到可访问的提案。');
     await groupFor(request, proposal.groupId, true);
     return proposal;
   });
   app.post<{ Params: { id: string } }>('/api/proposals/:id/activate', async request => actions.activateRules(auth(request).personaId, request.params.id, request.body));
+  app.post<{ Params: { id: string } }>('/api/proposals/:id/cancel', async request => {
+    objectBody(request.body ?? {}, []);
+    return actions.cancelRules(auth(request).personaId, request.params.id);
+  });
+  app.post<{ Params: { id: string } }>('/api/proposals/:id/rollback', async request => {
+    objectBody(request.body ?? {}, []);
+    return actions.rollbackRules(auth(request).personaId, request.params.id);
+  });
 
+  app.get<{ Params: { id: string } }>('/api/groups/:id/models', async request => actions.listModels(auth(request).personaId, request.params.id));
+  app.post<{ Params: { id: string } }>('/api/groups/:id/model', async request => {
+    const body = objectBody(request.body, ['id']);
+    return actions.selectModel(auth(request).personaId, request.params.id, requiredString(body.id, '模型 ID', 40));
+  });
+  app.post<{ Params: { id: string } }>('/api/groups/:id/conversation/reset', async request => {
+    objectBody(request.body ?? {}, []);
+    await actions.resetConversation(auth(request).personaId, request.params.id);
+    return { reset: true };
+  });
+  app.get<{ Params: { id: string } }>('/api/groups/:id/own-tasks', async request => ({ tasks: await actions.ownTasks(auth(request).personaId, request.params.id) }));
+
+  app.get('/api/platform/native-plugins', async request => {
+    const session = auth(request);
+    if (!platformAllowed(session.personaId)) return deny(403, 'PLATFORM_REQUIRED', '需要平台维护权限。');
+    if (!options.pluginMaintenance) return deny(503, 'MAINTENANCE_UNAVAILABLE', '当前宿主未开启原生插件维护。');
+    return options.pluginMaintenance.status();
+  });
+  app.post('/api/platform/native-plugins', async request => {
+    const session = auth(request);
+    if (!platformAllowed(session.personaId)) return deny(403, 'PLATFORM_REQUIRED', '需要平台维护权限。');
+    if (!options.pluginMaintenance) return deny(503, 'MAINTENANCE_UNAVAILABLE', '当前宿主未开启原生插件维护。');
+    const body = objectBody(request.body, ['operation', 'name', 'version', 'key', 'config', 'enabled']);
+    const result = body.operation === 'install'
+      ? await options.pluginMaintenance.install(requiredString(body.name, 'name', 200), requiredString(body.version, 'version', 80))
+      : body.operation === 'configure' && typeof body.enabled === 'boolean'
+        ? await options.pluginMaintenance.configure(requiredString(body.key, 'key', 200), objectBody(body.config, Object.keys(body.config && typeof body.config === 'object' ? body.config : {})), body.enabled)
+        : deny(400, 'INVALID_REQUEST', '请选择安装或配置操作。');
+    store.audit({ actorId: session.personaId, action: 'plugin.maintenance', targetId: String(body.name ?? body.key), outcome: 'completed' });
+    return result;
+  });
   app.get('/api/platform/plugins', async request => {
     const session = auth(request);
     if (!platformAllowed(session.personaId)) return deny(403, 'PLATFORM_REQUIRED', '只有平台管理员可以管理全局功能。');
@@ -227,6 +276,14 @@ export async function buildApp(options: AppOptions = {}) {
     return actions.runTask(session.personaId, request.params.id, request.body, () => readSession(request) === session, session.abort.signal);
   });
   app.post<{ Params: { id: string } }>('/api/tasks/:id/cancel', async request => { objectBody(request.body ?? {}, []); return actions.cancelTask(auth(request).personaId, request.params.id); });
+  app.get<{ Params: { id: string } }>('/api/tasks/:id/artifact', async (request, reply) => {
+    const actorId = auth(request).personaId;
+    const record = store.task(request.params.id) ?? deny(404, 'NOT_FOUND', '找不到本人文件。');
+    await groupFor(request, record.groupId);
+    if (record.creatorId !== actorId) return deny(404, 'NOT_FOUND', '找不到本人文件。');
+    const artifact = actions.takeTaskArtifact(actorId, request.params.id) ?? deny(410, 'ARTIFACT_UNAVAILABLE', '临时文件已领取、过期或权限已变化；原文字结果仍可查询。');
+    return reply.type(artifact.mediaType).header('content-disposition', 'attachment; filename="result.md"').send(Buffer.from(artifact.data));
+  });
   app.get<{ Params: { id: string } }>('/api/tasks/:id', async request => {
     const session = auth(request);
     const record = store.task(request.params.id) ?? deny(404, 'NOT_FOUND', '找不到可访问的任务。');

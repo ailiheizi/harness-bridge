@@ -17,8 +17,9 @@ Koishi / approved code            Bridge → OpenShell + Docker → DSH
 
 The library remains directly callable without GroupWeave. It connects a
 trusted host request to OpenShell CLI, a fresh Docker sandbox and the existing
-DSH headless Harness. Results return as bounded text and evidence; sandbox file
-artifact return is not implemented.
+DSH headless Harness. Results return as bounded text and evidence. For the
+GroupWeave fixed result export, the bridge can also return one bounded artifact
+downloaded before sandbox cleanup; the host controls authorization and delivery.
 
 ## Current implementation
 

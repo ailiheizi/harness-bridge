@@ -20,7 +20,12 @@ and mount it read-only if the app runs in a container. For example:
   "model": "your-enabled-model-id",
   "apiKey": "READ_FROM_YOUR_SECRET_STORE",
   "meterPort": 4319,
-  "gatewayEndpoint": "http://127.0.0.1:8080",
+  "gatewayEndpoint": "https://127.0.0.1:8080",
+  "gatewayTls": {
+    "caPath": "/run/groupweave/openshell/ca.crt",
+    "certPath": "/run/groupweave/openshell/tls.crt",
+    "keyPath": "/run/groupweave/openshell/tls.key"
+  },
   "upstreamUrl": "https://your-sub2api-host.example/v1"
 }
 ```
@@ -36,7 +41,8 @@ The accepted fields are fixed:
 | `model` | One administrator-selected model ID used for every request. |
 | `apiKey` | Real Sub2API key, available only to the trusted GroupWeave application process. |
 | `meterPort` | Free loopback TCP port from 1024 through 65535 for the local admission route. |
-| `gatewayEndpoint` | Native OpenShell gateway URL on `127.0.0.1`, with no path, query, or credentials. |
+| `gatewayEndpoint` | Native OpenShell HTTP or HTTPS URL on `127.0.0.1`, with no path, query, or credentials. Prefer HTTPS with native user authentication on shared hosts. |
+| `gatewayTls` | Required for HTTPS: absolute `caPath`, `certPath`, and `keyPath` to the native server CA and CLI client certificate/key. Forbidden for HTTP. All three must be regular non-symlink files, owner root or the app UID, mode `0600` or stricter. Mount only this bundle read-only into the application. |
 | `upstreamUrl` | HTTPS OpenAI-compatible API URL with no credentials, query, or fragment; its trusted path must end in `/v1` or `/v1/chat/completions`. A provider prefix such as `/zen/go/v1` is retained. |
 | `upstreamSessionHeader` | Optional; the only accepted value is `x-opencode-session`. When set, GroupWeave generates a fresh UUID per task lease and sends it only to the configured upstream. |
 
@@ -122,3 +128,45 @@ The 2026-10-26 deployment was exercised through real AyuGram private `/ask`,
 same chat with one measured dispatch and supplier usage. See
 `../../docs/ACCEPTANCE-20261022-NATIVE.md` for the deployment evidence and its
 remaining scope. This does not establish billing totals or long-term uptime.
+
+## Native gateway authentication (OpenShell 0.1.3)
+
+Use OpenShell's existing TLS listener and mTLS user authentication; no proxy or
+new runtime is involved. Keep the listener on `127.0.0.1` and configure the
+gateway's `disable_tls = false`, `guest_tls_ca`, `tls.cert_path`, `tls.key_path`,
+`tls.client_ca_path`, `mtls_auth.enabled = true`, and
+`auth.allow_unauthenticated_users = false`. Keep its existing sandbox JWT
+signing configuration. In the separately running Docker driver's own TOML,
+set `grpc_endpoint` to the HTTPS loopback URL and `guest_tls_ca` to the same
+server CA. Both containers must see the CA at that path. Do not give the driver
+or sandbox a CLI client private key. No driver image upgrade is required.
+
+The server certificate must contain IP SAN `127.0.0.1`. The native TLS handshake
+permits clients without certificates because supervisors use sandbox JWTs;
+anonymous protected API calls must still return gRPC `Unauthenticated` (16).
+A successful public health request alone does not prove protected API access.
+
+Each task copies the three CLI bundle files into its private native
+`XDG_CONFIG_HOME/openshell/gateways/groupweave/mtls/` and writes upstream native
+`metadata.json` plus `openshell/active_gateway`. This makes provider setup,
+bridge lifecycle, SSH upload/download and cleanup resolve the same identity.
+Copies use `0600`, directories use `0700`, and task cleanup removes them. They
+are never included in the DSH patch, workload HOME, Skill or upload set. The
+read-only source bundle persists for future tasks; it must live outside task
+cleanup roots. Keep parent directories protected from untrusted writes.
+
+This pins the native CLI file contract to OpenShell 0.1.3. Its mTLS-only
+configuration grants trusted client certificates platform-level control; it
+does not establish per-tenant gateway authorization. GroupWeave remains the
+trusted host and enforces its existing business authority. Protect the Bot key
+accordingly; root and Docker socket holders retain control over this host.
+Never mount the CA signing key, server key or gateway JWT signing key into
+GroupWeave. To change an existing plaintext deployment, drain its active
+OpenShell tasks before restarting only the gateway/driver and Bot with the
+matched TLS configuration; existing supervisors retain their original callback
+configuration. Preserve the previous config and image identities for rollback.
+
+Native references: [gateway authentication](https://docs.nvidia.com/openshell/v0.1.3/how-it-works/gateways/authentication),
+[CLI metadata](https://github.com/NVIDIA/OpenShell/blob/e1f3c82caa3ed3b65de22889ae7ef32a774878ef/crates/openshell-bootstrap/src/metadata.rs),
+[TLS and mTLS policy](https://github.com/NVIDIA/OpenShell/blob/e1f3c82caa3ed3b65de22889ae7ef32a774878ef/crates/openshell-server/src/cli.rs),
+and [Docker supervisor CA handling](https://github.com/NVIDIA/OpenShell/blob/e1f3c82caa3ed3b65de22889ae7ef32a774878ef/crates/openshell-driver-docker/src/lib.rs).

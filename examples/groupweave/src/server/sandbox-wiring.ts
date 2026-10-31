@@ -147,7 +147,9 @@ export function createStoreAuthorizedSandboxExecutor(
 
   function snapshot(request: TrustedSandboxAiRequest): TrustedSandboxAiRequest {
     return Object.freeze({ ...request,
-      options: Object.freeze({ ...request.options }),
+      options: Object.freeze({ ...request.options,
+        ...(request.options.conversation ? { conversation: Object.freeze(request.options.conversation.map(message => Object.freeze({ ...message }))) } : {}),
+      }),
       authorization: Object.freeze({ ...request.authorization }),
     }) as TrustedSandboxAiRequest;
   }

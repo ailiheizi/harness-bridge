@@ -73,3 +73,37 @@ export function PluginConsole({ plugins, group, busy, onToggle, onPreview, onRul
     </section>
   </div>;
 }
+
+/** Uses the platform's existing authenticated, CSRF-protected request function. */
+export function NativePluginMaintenance({ request }: { request: (path: string, body?: unknown) => Promise<any> }) {
+  const [state, setState] = useState<any>();
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [name, setName] = useState('@koishijs/plugin-echo');
+  const [version, setVersion] = useState('2.2.5');
+  const [key, setKey] = useState('echo:managed');
+  const [config, setConfig] = useState('{}');
+  const run = async (body?: unknown) => {
+    setBusy(true); setError('');
+    try { setState(await request('/api/platform/native-plugins', body)); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : '插件维护失败。'); }
+    finally { setBusy(false); }
+  };
+  return <section className="panel"><h2>原生插件维护</h2>
+    <p>仅平台管理员。npm 插件属于可信服务器代码；安装不会自动开放群权限。安装脚本禁用，需脚本的插件由部署维护。</p>
+    <button disabled={busy} onClick={() => void run()}>读取真实依赖与状态</button>
+    {error && <p role="alert">{error}</p>}
+    {state?.restartRequired && <p role="alert">已加载依赖发生更新，需要平台重启后使用新版本。</p>}
+    <label>可信 npm 插件<input value={name} onChange={event => setName(event.target.value)}/></label>
+    <label>精确版本<input value={version} onChange={event => setVersion(event.target.value)}/></label>
+    <button disabled={busy} onClick={() => void run({ operation: 'install', name, version })}>安装 / 升级</button>
+    <label>Loader 插件键<input value={key} onChange={event => setKey(event.target.value)}/></label>
+    <label>平台配置 JSON<textarea value={config} onChange={event => setConfig(event.target.value)}/></label>
+    {[true, false].map(enabled => <button key={String(enabled)} disabled={busy} onClick={() => {
+      try { const parsed = JSON.parse(config); void run({ operation: 'configure', key, config: parsed, enabled }); }
+      catch { setError('配置必须是 JSON 对象。'); }
+    }}>{enabled ? '保存并启用' : '保存并停用'}</button>)}
+    {state && <><h3>依赖</h3><pre>{JSON.stringify(state.dependencies, null, 2)}</pre><h3>Loader 状态</h3>
+      {state.plugins?.map((plugin: any) => <button key={plugin.key} onClick={() => { setKey(plugin.key.replace(/^~/, '')); setConfig(JSON.stringify(plugin.config, null, 2)); }}>{plugin.key} · {plugin.enabled ? '启用' : '停用'} · {String(plugin.status)}</button>)}</>}
+  </section>;
+}

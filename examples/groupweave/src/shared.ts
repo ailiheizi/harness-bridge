@@ -1,6 +1,7 @@
 export type Role = 'admin' | 'member';
 export interface Persona { id: string; name: string; label: string; platformAdmin: boolean }
 export interface GroupConfig {
+  nativeFeatures?: string[];
   responseMode: 'mention' | 'command';
   language: 'zh' | 'en';
   features: string[];
@@ -28,7 +29,7 @@ export interface Plugin {
 export interface Proposal {
   id: string; groupId: string; creatorId: string; baseVersion: number;
   candidate: GroupConfig; before: GroupConfig; warnings: string[];
-  changes: string[]; text: string; status: 'pending' | 'active'; createdAt: string;
+  changes: string[]; text: string; status: 'pending' | 'active' | 'cancelled'; createdAt: string;
 }
 export interface Task {
   id: string; groupId: string; creatorId: string; featureId: string;
@@ -39,6 +40,8 @@ export interface Task {
   /** Actual native tool dispatch attempts when evidenced; success also requires a completed task. */
   toolCalls?: number;
   usage?: { inputTokens: number; outputTokens: number; totalTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; reasoningTokens?: number } | null;
+  modelProfileId?: string;
+  artifact?: { name: string; mediaType: string; bytes: number };
   input: string; inputHidden?: boolean; output: string; error?: string;
 }
 export interface Me {

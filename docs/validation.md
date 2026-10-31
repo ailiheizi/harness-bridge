@@ -1,9 +1,58 @@
 # Validation and evidence
 
+## 2026-10-31 status update
+
+M1 / AIL-28, M2 / AIL-29, and the five M3/M4 items are Done; the integration
+checklist is complete. The latest application `npm run build` passed, five
+independent review items are closed, and the receipt ID regression passed 2/2.
+These are scoped results, not an exhaustive ecosystem or security audit.
+
+Real target evidence: Telegram delivered a 23-byte Markdown file that was
+downloaded and checked. After restart, a follow-up in the same DM received a
+real DSH reply using prior context and delivered a 10-byte file. A real group AI
+proposal changed max from 10 to 7 at v4→v5; a confirmed rollback proposal
+restored max 10 at v6, verified through `/settings`, without additional model
+calls for apply/rollback. The deployed model set remains the default model;
+multiple profile selection was checked locally only.
+
+Node 26.13.0 with OpenShell 0.1.3 native mTLS is deployed. The anonymous
+protected RPC returned code 16 (denied); its credentialed equivalent returned
+0 (success). All three Bot UID 1000 native CLI list checks returned 0 (success).
+The final command fix and DSH export image are deployed; health, Telegram and
+executor connections are healthy with zero restarts and the current database
+preserved. This does not close M6. M5's reusable deployment recipe/documentation
+and M6's final six negative cases remain unfinished; the default configuration
+feature itself was already delivered under AIL-98. See the
+[dated delivery record](../examples/groupweave/docs/DELIVERY-20261031.md).
+
 Keep reproducible checks in this repository separate from recorded tests on a
-private target. This preview is source version `0.1.6-preview.1`; the core
-bridge implementation was carried forward unchanged from the `0.1.5` source.
-That statement is source lineage, not a new live acceptance result.
+private target. The package is source version `0.1.6-preview.1`; the current
+2026-10-31 changes add an optional fixed Markdown download to its bridge API.
+Earlier records below describe their own source and evidence dates.
+
+## 2026-10-31 application and fixed-result additions
+
+The complete case now has native platform plugin maintenance, group-native
+tool switches, reviewed configuration proposals, bounded personal contexts,
+model presets and task history. The bridge can optionally download one fixed
+Markdown result before sandbox cleanup. See the
+[usage guide](../examples/groupweave/docs/M1-M4-USAGE.md).
+
+New-seam checks covered a real npm/Loader install and enable/disable path,
+original environment and database paths with managed configuration, a pinned
+DSH SessionStore completion observer producing a file, native-command artifact
+transfer with a CLI stand-in, and application routes through proposals, model
+selection and a downloadable file. Conversation checks included restart
+interruption, reset and audience changes. A real pinned RSS emitter verified
+that the group switch suppresses existing subscriptions while removal remains
+available. The complete application builds and starts natively with AI off,
+including its maintenance service and new commands. A focused independent
+review found five integration defects, which were corrected and rechecked.
+
+These results establish the changed seams, not an exhaustive plugin matrix or
+final security review. Target deployment and real external results are recorded
+separately in the application's dated delivery record when available. Existing
+evidence for unchanged pinned upstream functions is reused under ADR-039.
 
 ## Complete Bot case publication, 2026-10-29
 

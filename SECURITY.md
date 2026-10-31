@@ -16,6 +16,12 @@ system.
   do not pass secrets or arbitrary environment values through task input.
 - Keep private CLI home/config roots and DSH patch under trusted control.
   Review policy and egress for each deployment.
+- Authenticate access to the Docker-capable native control plane even when it
+  listens only on loopback. The application case supports upstream OpenShell
+  0.1.3 TLS/mTLS with per-task native CLI credentials; it does not upload those
+  credentials into the DSH workload. Public health/reflection and protected
+  native API authorization must be checked separately. A native client
+  certificate is a trusted platform credential, not a tenant permission token.
 - Persist failed and blocked results, including uncertain cleanup identity, in
   host operations records. Do not reuse an instance with unverified cleanup.
 - Obtain trusted request accounting and pre-request budget controls separately

@@ -41,8 +41,9 @@ GroupWeave 复用 Koishi、grammY、Fastify、React/Vite、DSH、OpenShell 及�
 和引用 `/digest` 的执行及交付。这些收据只证明对应任务，不代表所有组合或生产级保证。详见
 [第十四批原生验收](examples/groupweave/docs/ACCEPTANCE-20261022-NATIVE.md)。
 
-已知缺口仍明确保留：匿名站点解析是尽力服务，部分远端样例会失败；Console 在线安装插件未实现；AI 沙箱文件
-产物回传未实现；多轮记忆和宽泛插件权限未实现。应用文档还列出未验证组合及部署限制。见其
+2026-10-31 源码新增在线插件维护、每群工具开关、AI 配置提案、个人有界会话、任务历史、可信模型选择与固定
+Markdown 沙箱产物。使用方式见[指南](examples/groupweave/docs/M1-M4-USAGE.md)。匿名站点解析仍是尽力服务；
+平台插件属于可信代码。源码实现、目标部署与真实 TG 交付分别记录，功能更新本身不等于线上验收通过。见其
 [TODO](examples/groupweave/docs/TODO.md)、[验收记录](examples/groupweave/docs/ACCEPTANCE-20261022-NATIVE.md)
 和[安全说明](SECURITY.md)。
 
@@ -79,8 +80,8 @@ const result = await bridge.execute(hostOwnedTrustedRequest, signal);
 ## 边界
 
 宿主负责已认证身份、当前权限、持久化、容量、计量和交付。OpenShell 负责沙箱生命周期，DSH 负责 Harness
-行为。接入库提交一条固定原生命令，并返回有界文本及执行/清理证据；它不提供 Telegram API、任意 Shell、
-模型路由或沙箱文件产物。
+行为。接入库提交一条固定原生命令，并返回有界文本及执行/清理证据；可选 `dsh.downloadResult` 在清理前取回
+一个固定且经校验的 `result.md`。它不提供 Telegram API、任意 Shell 或模型路由。
 
 当前实现只使用 OpenShell Docker 和 DSH headless。Harness 完成不证明模型计费、业务正确或用户已收到结果。
 通用库中的 `modelRequestCount` 保持未知。实际安全边界仍包括部署策略及宿主检查。详见[设计](docs/design.md)、
