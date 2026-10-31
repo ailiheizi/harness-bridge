@@ -80,8 +80,7 @@ test('daily RSS preset previews sources and cost, uses native schedule, batches 
   assert.equal(rows[0].interval, 86400000); assert.match(rows[0].command, /^groupweave-rss-digest-deliver /);
   assert.equal(f.calls, 0); await f.run('rssdigest run'); assert.equal(f.calls, 0, 'empty batch must not call model');
   await f.digest.capture('telegram', '-1002', 'B-private-item');
-  const scope = (f.runtime.app.$commander.get('rss') as any).ctx.scope.ctx;
-  await scope.broadcast(['telegram:-1001'], 'A-title https://item.example/1');
+  await f.digest.capture('telegram', '-1001', 'A-title https://item.example/1');
   await f.digest.capture('telegram', '-1001', 'A-title https://item.example/1');
   const scheduled = f.runtime.app.bots.find(b => b.selfId === '99')!.session(rows[0].event as any);
   await scheduled.execute(rows[0].command, true); assert.equal(f.calls, 1); assert.equal(f.outputs.length, 1);

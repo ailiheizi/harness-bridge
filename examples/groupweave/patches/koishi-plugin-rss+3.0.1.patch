@@ -1,8 +1,8 @@
 diff --git a/node_modules/koishi-plugin-rss/lib/index.js b/node_modules/koishi-plugin-rss/lib/index.js
-index af2eca0..b04396c 100644
+index af2eca0..12814ac 100644
 --- a/node_modules/koishi-plugin-rss/lib/index.js
 +++ b/node_modules/koishi-plugin-rss/lib/index.js
-@@ -83,9 +83,20 @@ function apply(ctx, config) {
+@@ -83,9 +83,37 @@
      const source = payload.meta.link;
      if (!feedMap[source])
        return;
@@ -22,7 +22,24 @@ index af2eca0..b04396c 100644
 +    }
 +    const message = `${payload.meta.title}${author}
 +${payload.title}${itemLink ? `\n${itemLink}` : ""}`;
-+    await ctx.broadcast([...feedMap[source]], import_koishi.h.text(message));
++    const targets = [...feedMap[source]];
++    const content = import_koishi.h.text(message);
++    let allowed = targets;
++    try {
++      // Optional GroupWeave binding on Koishi's native lifecycle, not a new bus.
++      const decision = await ctx.serial("groupweave/rss-before-broadcast", Object.freeze([...targets]), String(content));
++      if (decision !== undefined) {
++        if (!Array.isArray(decision) || decision.some(target => typeof target !== "string" || !targets.includes(target))) {
++          logger.warn("RSS_NOTIFICATION_GATE_FAILED");
++          return;
++        }
++        allowed = [...new Set(decision)];
++      }
++    } catch {
++      logger.warn("RSS_NOTIFICATION_GATE_FAILED");
++      return;
++    }
++    if (allowed.length) await ctx.broadcast(allowed, content);
    });
    ctx.on("ready", async () => {
      const channels = await ctx.database.getAssignedChannels(["platform", "id", "rss"]);

@@ -38,6 +38,16 @@ Upstream: <https://github.com/filipedeschamps/rss-feed-emitter>.
 
 ## koishi-plugin-rss 3.0.1
 
+The pinned emitter also offers the optional local
+`groupweave/rss-before-broadcast` lifecycle hook. The GroupWeave host uses
+Koishi's existing `serial` event to filter the original targets using current
+group policy and collect only approved prepared notification text. Returned
+targets must be a subset; invalid results or hook failures withhold the batch.
+Without a host listener the ordinary upstream broadcast remains unchanged.
+This single adapter hook replaces context/prototype broadcast interception,
+which did not cover the actual deployed emitter. It adds no scheduler or event
+bus and must be included with the host source when deploying an overlay.
+
 The upstream new-item announcement now appends the item's `payload.link` only
 when it parses as an HTTP or HTTPS URL with a hostname and no embedded user
 credentials. Missing authors are omitted instead of being rendered as
