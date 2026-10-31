@@ -4,6 +4,14 @@
 The lockfile fixes the dependency versions. An upgrade that invalidates a
 patch must be reviewed rather than silently skipping it.
 
+An application overlay over an older image must also include any affected
+patched dependency files, or rebuild from the public Dockerfile. Copying only
+`src` and `dist` does not apply `patch-package`. Copy the complete tracked
+`src` tree, including shared runtime modules outside `src/server`. Check the changed dependency's
+actual patched bytes in the target image; an unchanged package version alone
+is insufficient. Do not reinstall unrelated dependencies or repeat the plugin
+acceptance matrix for this check.
+
 ## rss-feed-emitter 3.2.4
 
 Used by `koishi-plugin-rss@3.0.1`. With `skipFirstLoad: true`, the upstream

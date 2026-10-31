@@ -36,6 +36,7 @@ async function fixture(t: test.TestContext, late = false) {
   const createRuntime = () => createKoishiRuntime({ configPath, ...(late ? { maintenanceDir: () => join(dir, 'managed') } : {}), async setup(ctx) {
     if (late) await new Promise(r => setTimeout(r, 50));
     ctx.plugin(LocalBot);
+    installRssIntegration(ctx, { authorize: async () => allowed, allowBroadcast: async () => true, onItem: (platform, channel, text) => digest?.capture(platform, channel, text) });
     const schedules = installScheduleIntegration(ctx, { authorize: async () => allowed });
     digest = installRssDigestIntegration(ctx, {
       schedules,
@@ -43,7 +44,6 @@ async function fixture(t: test.TestContext, late = false) {
       execute: async (_plan, input) => { calls++; inputs.push(input); if (delay) await new Promise<void>(r => { finish = r; }); return { text: 'one summary', taskId: 'task-1' }; },
       deliver: async (_plan, result) => { outputs.push(result.text); },
     });
-    installRssIntegration(ctx, { authorize: async () => allowed, allowBroadcast: async () => true, onItem: (platform, channel, text) => digest.capture(platform, channel, text) });
   } });
   let runtime = await createRuntime();
   await runtime.start(); bot = runtime.app.bots.find(b => b.selfId === '99') as LocalBot;

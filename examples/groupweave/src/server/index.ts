@@ -68,7 +68,7 @@ app = await buildApp({
   ...(sandboxModule ? { sandboxAiTimeoutMs: sandboxTaskTimeoutMs(sandboxModule) } : {}),
   echoExecutor: (request, signal) => code.executeEcho(request, signal),
   welcomeExecutor: (request, signal) => code.executeWelcome(request, signal),
-  antiadBackend: antiad ? 'classifier' : 'keywords',
+  antiadBackend: process.env.ENABLE_ANTIAD === '1' ? 'classifier' : 'keywords',
   antiadExecutor: antiad ? (request, signal) => antiad!({
     actorId: request.actorId, groupId: request.groupId, input: request.input, audience: request.audience, authorized: request.authorized,
     rules: { promptThreshold: request.options.antiadPromptThreshold ?? 0.55, actionThreshold: request.options.antiadActionThreshold ?? 0.9,
