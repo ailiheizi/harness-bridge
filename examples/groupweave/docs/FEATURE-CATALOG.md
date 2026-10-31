@@ -1,5 +1,7 @@
 # GroupWeave 功能速查
 
+[当前里程碑与缺口](MILESTONE-STATUS.md) · [Web 工作区与工具目录](WEB-WORKSPACE.md)
+
 面向当前原生 Telegram Bot。依赖版本取自 `package.json`；功能证据只列已记录的
 代表性真实路径，不代表所有输入组合通过。平台管理员先开放能力，群管理员配置
 群范围，命令执行时按当前权限复核。AI 命令还需配置受保护的 sandbox binding，

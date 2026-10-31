@@ -8,7 +8,7 @@ export function NativeGroupSettings({ group, busy, onPreview }: { group: Group; 
   const selected = group.config.nativeFeatures ?? nativeIds;
   return <section className="panel"><div className="section-heading"><h2>本群原生工具开关</h2><span className="version">v{group.version}</span></div>
     <p>控制已经接入的工具能否在本群使用；平台安装、浏览器、媒体服务与凭据仍由平台维护。开关不改变插件全局参数。</p>
-    <div className="plugin-settings">{nativeIds.map(id => <label className="check-field" key={id}>
+    <div className="native-gates">{nativeIds.map(id => <label className="check-field" key={id}>
       <input type="checkbox" checked={selected.includes(id)} disabled={busy} onChange={() => onPreview({ ...group.config,
         nativeFeatures: selected.includes(id) ? selected.filter(value => value !== id) : [...selected, id] })}/>
       <span>{nativeLabels[id]}</span></label>)}</div><p className="inline-note">每次调整都会先生成本群预览，确认后生效。未配置列表的旧群沿用原来的开放行为。</p>
@@ -40,7 +40,7 @@ export function SessionTools({ groupId, request }: { groupId: string; request: R
     catch (error) { if (mounted.current) setMessage((error as Error).message); }
     finally { if (mounted.current) setBusy(false); }
   }
-  return <section className="panel"><div className="section-heading"><h2>本人对话与任务</h2><button className="text-button" disabled={busy} onClick={() => void act(refresh)}>刷新状态</button></div>
+  return <section className="panel"><div className="section-heading"><h2>本人对话设置</h2><button className="text-button" disabled={busy} onClick={() => void act(refresh)}>刷新状态</button></div>
     <p>只保留本人在当前群、相同受众下显式提交的助手问答，最多 12 条消息、24 KB；切换受众会开始新上下文。每次执行仍使用全新沙箱。摘要、翻译、规则解释不会作为聊天历史。</p>
     <div className="plugin-settings"><label className="field">当前对话模型<select value={models.selectedId ?? ''} disabled={busy || !models.profiles.length} onChange={event => {
       const id = event.target.value; void act(async () => { await request(`/groups/${groupId}/model`, { id }); });
@@ -48,12 +48,12 @@ export function SessionTools({ groupId, request }: { groupId: string; request: R
       <button className="button secondary" disabled={busy} onClick={() => void act(async () => { await request(`/groups/${groupId}/conversation/reset`, {}); if (mounted.current) setMessage('当前对话上下文已清空，任务历史保留。'); })}>新建对话 / 重置上下文</button></div>
     <p className="inline-note">Telegram：/tasks、/task &lt;ID&gt;、/cancel、/newchat、/models、/model &lt;ID&gt;。</p>
     {message && <p role="status">{message}</p>}
-    {!tasks.length ? <p>本人当前群暂无任务。</p> : <div className="table-wrap"><table><thead><tr><th>任务</th><th>状态</th><th>操作</th></tr></thead><tbody>{tasks.slice(0, 20).map(task => <tr key={task.id}>
+    <details className="own-task-disclosure"><summary>运行任务与临时文件（{tasks.filter(task => task.pending).length} 项执行中）</summary>{!tasks.length ? <p>本人当前群暂无任务。</p> : <div className="table-wrap"><table><thead><tr><th>任务</th><th>状态</th><th>操作</th></tr></thead><tbody>{tasks.slice(0, 20).map(task => <tr key={task.id}>
       <td><strong>{task.featureId}</strong><small>{task.id}</small></td><td>{task.pending ? '执行中' : task.status === 'succeeded' ? '完成' : task.error ?? task.status}</td><td>
         <button disabled={busy} onClick={() => setDetail(task)}>查看结果</button>{task.pending && <button disabled={busy} onClick={() => void act(async () => { await request(`/tasks/${task.id}/cancel`, {}); })}>取消</button>}
       </td></tr>)}</tbody></table></div>}
     {detail && <div className="result-box"><strong>{detail.id}</strong><pre>{detail.pending ? '任务仍在执行，请刷新状态。' : detail.output || detail.error || '无结果。'}</pre>
-      {detail.artifact && <a href={`/api/tasks/${encodeURIComponent(detail.id)}/artifact`} download="result.md">领取临时 Markdown 文件（5 分钟内一次）</a>}</div>}
+      {detail.artifact && <a href={`/api/tasks/${encodeURIComponent(detail.id)}/artifact`} download="result.md">领取临时 Markdown 文件（5 分钟内一次）</a>}</div>}</details>
   </section>;
 }
 
