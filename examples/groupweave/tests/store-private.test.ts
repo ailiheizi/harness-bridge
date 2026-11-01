@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
-import { Store, StoreError, telegramPrivateId } from '../src/server/store.js';
+import { Store, StoreError, STORAGE_SCHEMA_VERSION, telegramPrivateId } from '../src/server/store.js';
 import type { Task } from '../src/shared.js';
 
 function errorCode(code: string) { return (error: unknown) => error instanceof StoreError && error.code === code; }
@@ -65,16 +65,16 @@ test('schema 2 databases and backups migrate private scope storage without losin
     const oldTask: Task = { ...succeeded('existing-task', groupId, actorId), audience: 'group' };
     store.reserveTask(oldTask, 'existing-key', 'existing-hash'); store.finishTask(oldTask); store.close(); store = undefined;
     const file = join(dir, 'groupweave.sqlite'); const db = new DatabaseSync(file);
-    db.exec('DROP TABLE private_scopes; PRAGMA user_version=2'); db.close();
+    db.exec('DROP TABLE capability_requests; DROP TABLE conversations; DROP TABLE private_scopes; PRAGMA user_version=2'); db.close();
     store = new Store(dir);
-    assert.equal(store.schemaVersion, 3); assert.equal(store.group(groupId, actorId)?.name, 'Existing group');
+    assert.equal(store.schemaVersion, STORAGE_SCHEMA_VERSION); assert.equal(store.group(groupId, actorId)?.name, 'Existing group');
     assert.equal(store.reservation(groupId, actorId, 'existing-key')?.task?.id, 'existing-task');
     const report = await store.backupTo(join(dir, 'backups', 'migrated.sqlite'));
-    assert.equal(report.schemaVersion, 3); store.close(); store = undefined;
+    assert.equal(report.schemaVersion, STORAGE_SCHEMA_VERSION); store.close(); store = undefined;
 
-    // Convert a verified v3 backup to its genuine v2 table/version shape.
+    // Convert a verified current backup to its genuine v2 table/version shape.
     const v2 = join(root, 'legacy-v2.sqlite'); copyFileSync(report.path, v2);
-    const legacy = new DatabaseSync(v2); legacy.exec('DROP TABLE private_scopes; PRAGMA user_version=2'); legacy.close();
+    const legacy = new DatabaseSync(v2); legacy.exec('DROP TABLE capability_requests; DROP TABLE conversations; DROP TABLE private_scopes; PRAGMA user_version=2'); legacy.close();
     const restoredDir = join(root, 'restored');
     await Store.restoreBackup(v2, restoredDir);
     store = new Store(restoredDir);

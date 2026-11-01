@@ -6,8 +6,8 @@ import rateLimit from '@fastify/rate-limit';
 import { parse, validate } from '@tma.js/init-data-node';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { resolve, join } from 'node:path';
-import type { Group, Me } from '../shared.js';
-import { PERSONAS, Store } from './store.js';
+import type { CapabilityRequest, Group, Me } from '../shared.js';
+import { PERSONAS, Store, StoreError } from './store.js';
 import { ApiError, deny, objectBody, requiredString, presentTask, createGroupActions, type Executor } from './actions.js';
 import { createRuleProposals } from './rule-proposals.js';
 export type { Executor, ExecutorRequest } from './actions.js';
@@ -142,6 +142,11 @@ export async function buildApp(options: AppOptions = {}) {
   });
 
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof StoreError && error.code.startsWith('CAPABILITY_')) {
+      const statuses: Record<string, number> = { CAPABILITY_INPUT: 400, CAPABILITY_DENIED: 403, CAPABILITY_NOT_FOUND: 404, CAPABILITY_CONFLICT: 409, CAPABILITY_CAPACITY: 429 };
+      const status = statuses[error.code];
+      if (status) return reply.code(status).send({ code: error.code, message: error.message });
+    }
     if (error && typeof error === 'object' && 'code' in error && error.code === 'IDEMPOTENCY_CAPACITY') return reply.code(429).send({ code: 'IDEMPOTENCY_CAPACITY', message: '重复保护记录已达到部署上限，未执行；需要平台维护容量。' });
     if (error && typeof error === 'object' && 'code' in error && error.code === 'RATE_LIMITED') return reply.code(429).send({ code: 'RATE_LIMITED', message: '请求过于频繁，请稍后明确提交。' });
     if (error && typeof error === 'object' && 'code' in error && ['BACKUP_CAPACITY', 'BACKUP_RUNNING'].includes(String(error.code))) return reply.code(409).send({ code: error.code, message: '备份容量已满或已有备份进行中，需要平台维护后再提交。' });
@@ -239,6 +244,49 @@ export async function buildApp(options: AppOptions = {}) {
     return { reset: true };
   });
   app.get<{ Params: { id: string } }>('/api/groups/:id/own-tasks', async request => ({ tasks: await actions.ownTasks(auth(request).personaId, request.params.id) }));
+
+  function capabilityQuery(value: unknown): { status?: CapabilityRequest['status']; offset: number } {
+    const query = objectBody(value, ['status', 'offset']);
+    if (query.status !== undefined && (typeof query.status !== 'string' || !['submitted', 'reviewing', 'delivered', 'declined', 'cancelled'].includes(query.status))) return deny(400, 'INVALID_REQUEST', '申请状态无效。');
+    const offset = query.offset === undefined ? 0 : typeof query.offset === 'string' && /^(0|[1-9]\d*)$/.test(query.offset) ? Number(query.offset) : NaN;
+    if (!Number.isSafeInteger(offset) || offset < 0) return deny(400, 'INVALID_REQUEST', '分页位置无效。');
+    return { status: query.status as CapabilityRequest['status'] | undefined, offset };
+  }
+  async function capabilityGroup(request: FastifyRequest, groupId: string) {
+    const session = auth(request);
+    const group = await actions.getGroup(session.personaId, groupId, true);
+    if (readSession(request) !== session) return deny(401, 'AUTH_REQUIRED', '会话已失效，请重新登录。');
+    return { group, actorId: session.personaId };
+  }
+  app.get<{ Params: { id: string } }>('/api/groups/:id/capability-requests', async request => {
+    const { group } = await capabilityGroup(request, request.params.id);
+    return store.listCapabilityRequests({ ...capabilityQuery(request.query), groupId: group.id });
+  });
+  app.post<{ Params: { id: string } }>('/api/groups/:id/capability-requests', async request => {
+    const { group, actorId } = await capabilityGroup(request, request.params.id);
+    const body = objectBody(request.body, ['title', 'details']);
+    return store.createCapabilityRequest({ groupId: group.id, creatorId: actorId, title: body.title as string, details: body.details as string });
+  });
+  app.post<{ Params: { id: string; requestId: string } }>('/api/groups/:id/capability-requests/:requestId/cancel', async request => {
+    const { group, actorId } = await capabilityGroup(request, request.params.id);
+    const body = objectBody(request.body, ['baseVersion']);
+    const result = store.cancelCapabilityRequest(group.id, actorId, request.params.requestId, body.baseVersion as number);
+    store.audit({ actorId, groupId: group.id, action: 'capability.cancel', targetId: result.id, outcome: 'completed' });
+    return result;
+  });
+  app.get('/api/platform/capability-requests', async request => {
+    const session = auth(request);
+    if (!platformAllowed(session.personaId)) return deny(403, 'PLATFORM_REQUIRED', '需要平台维护权限。');
+    return store.listCapabilityRequests(capabilityQuery(request.query));
+  });
+  app.post<{ Params: { requestId: string } }>('/api/platform/capability-requests/:requestId', async request => {
+    const session = auth(request);
+    if (!platformAllowed(session.personaId)) return deny(403, 'PLATFORM_REQUIRED', '需要平台维护权限。');
+    const body = objectBody(request.body, ['baseVersion', 'status', 'reply']);
+    const result = store.reviewCapabilityRequest(request.params.requestId, { baseVersion: body.baseVersion as number, status: body.status as 'reviewing' | 'delivered' | 'declined', reply: body.reply as string });
+    store.audit({ actorId: session.personaId, action: 'capability.review', targetId: result.id, outcome: 'completed' });
+    return result;
+  });
 
   app.get('/api/platform/native-plugins', async request => {
     const session = auth(request);

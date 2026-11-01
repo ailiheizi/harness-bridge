@@ -5,14 +5,15 @@ import { createHash, randomUUID } from 'node:crypto';
 import { backup, DatabaseSync } from 'node:sqlite';
 import { nativeFeatureAllowed, type NativeFeature } from './group-config.js';
 import type { ConversationMessage } from './ai.js';
-import type { Group, Persona, Plugin, Proposal, Role, Task } from '../shared.js';
+import type { CapabilityRequest, Group, Persona, Plugin, Proposal, Role, Task } from '../shared.js';
 
 type StoredGroup = Omit<Group, 'role'>;
 type Row = Record<string, unknown>;
-export const STORAGE_SCHEMA_VERSION = 4;
+export const STORAGE_SCHEMA_VERSION = 5;
 const APPLICATION_ID = 0x47575031;
-const TABLES = ['groups', 'plugins', 'actors', 'memberships', 'private_scopes', 'proposals', 'tasks', 'telegram_deliveries', 'audit_log', 'conversations'] as const;
+const TABLES = ['groups', 'plugins', 'actors', 'memberships', 'private_scopes', 'proposals', 'tasks', 'telegram_deliveries', 'audit_log', 'conversations', 'capability_requests'] as const;
 const COLUMNS: Record<(typeof TABLES)[number], string[]> = {
+  capability_requests: ['id', 'group_id', 'creator_id', 'status', 'version', 'json'],
   conversations: ['group_id', 'actor_id', 'json'],
   groups: ['id', 'version', 'json', 'scope', 'telegram_chat_id'],
   plugins: ['id', 'json'], actors: ['id', 'telegram_user_id', 'json'],
@@ -62,6 +63,11 @@ function decode<T>(row: Row | undefined, column = 'json'): T | undefined {
 export class StoreError extends Error {
   constructor(readonly code: string, message: string) { super(message); this.name = 'StoreError'; }
 }
+function capabilityText(value: string, max: number): string {
+  if (typeof value === 'string' && value.includes('\0')) throw new StoreError('CAPABILITY_INPUT', '申请文本不能包含 NUL 控制字符。');
+  if (typeof value !== 'string' || !value.trim() || value.trim().length > max) throw new StoreError('CAPABILITY_INPUT', `申请文本必须为非空文本，最多 ${max} 字。`);
+  return value.trim();
+}
 function requireId(value: string | number, negative: boolean): string {
   const number = Number(value);
   if (!Number.isSafeInteger(number) || (negative ? number >= 0 : number <= 0) || String(number) !== String(value)) {
@@ -95,7 +101,7 @@ const DEFAULT_RETENTION: RetentionLimits = {
 };
 // Closed event vocabulary: audit records must not become an arbitrary text/error sink.
 const AUDIT_ACTIONS = new Set(['auth.login', 'group.register', 'group.migrate', 'member.sync', 'rules.preview', 'rules.activate',
-  'proposal.create', 'proposal.activate', 'task.reserve', 'task.finish', 'task.execute', 'task.cancel',
+  'proposal.create', 'proposal.activate', 'capability.create', 'capability.review', 'capability.cancel', 'task.reserve', 'task.finish', 'task.execute', 'task.cancel',
   'plugin.toggle', 'plugin.maintenance', 'authorization.check', 'access.check', 'storage.prune', 'storage.backup', 'storage.restore',
   'maintenance.prune', 'maintenance.backup', 'delivery.claim', 'delivery.sent', 'delivery.unknown', 'delivery.withheld']);
 const AUDIT_OUTCOMES = new Set(['allowed', 'denied', 'succeeded', 'failed', 'blocked', 'expired', 'sent', 'unknown', 'withheld',
@@ -116,10 +122,11 @@ function verifyDatabase(db: DatabaseSync): { pages: number; schemaVersion: numbe
     if (JSON.stringify(names) !== JSON.stringify(COLUMNS[table])) throw new StoreError('BACKUP_SCHEMA', '备份列结构不兼容。');
   }
   if ((db.prepare('PRAGMA foreign_key_check').all() as Row[]).length) throw new StoreError('BACKUP_INVALID', '备份关系完整性检查未通过。');
-  for (const [table, column] of [['groups', 'json'], ['plugins', 'json'], ['actors', 'json'], ['private_scopes', 'json'], ['proposals', 'json'], ['tasks', 'draft_json'], ['tasks', 'result_json'], ['conversations', 'json']] as const) {
+  for (const [table, column] of [['groups', 'json'], ['plugins', 'json'], ['actors', 'json'], ['private_scopes', 'json'], ['proposals', 'json'], ['tasks', 'draft_json'], ['tasks', 'result_json'], ['conversations', 'json'], ['capability_requests', 'json']] as const) {
     if (db.prepare(`SELECT 1 FROM ${table} WHERE ${column} IS NOT NULL AND NOT json_valid(${column}) LIMIT 1`).get()) throw new StoreError('BACKUP_INVALID', '备份记录不是有效 JSON。');
   }
   for (const sql of [
+    "SELECT 1 FROM capability_requests WHERE json_extract(json,'$.id') IS NOT id OR json_extract(json,'$.groupId') IS NOT group_id OR json_extract(json,'$.creatorId') IS NOT creator_id OR json_extract(json,'$.status') IS NOT status OR json_extract(json,'$.version') IS NOT version OR group_id NOT IN (SELECT id FROM groups) OR status NOT IN ('submitted','reviewing','delivered','declined','cancelled') OR version < 1 OR json_type(json,'$.title') IS NOT 'text' OR json_type(json,'$.details') IS NOT 'text' OR json_type(json,'$.reply') IS NOT 'text' OR json_type(json,'$.groupName') IS NOT 'text' OR json_type(json,'$.createdAt') IS NOT 'text' OR json_type(json,'$.updatedAt') IS NOT 'text' OR length(trim(json_extract(json,'$.title'))) NOT BETWEEN 1 AND 120 OR length(trim(json_extract(json,'$.details'))) NOT BETWEEN 1 AND 2000 OR length(json_extract(json,'$.reply')) > 2000 LIMIT 1",
     "SELECT 1 FROM groups WHERE json_extract(json,'$.id') IS NOT id OR json_extract(json,'$.version') IS NOT version OR (scope='preview' AND id NOT IN ('group-a','group-b')) OR (scope='telegram' AND id IS NOT 'tg:'||telegram_chat_id) LIMIT 1",
     "SELECT 1 FROM actors WHERE json_extract(json,'$.id') IS NOT id OR id IS NOT 'tg-user:'||telegram_user_id OR json_extract(json,'$.platformAdmin') IS NOT 0 LIMIT 1",
     "SELECT 1 FROM private_scopes WHERE id IS NOT 'tg-dm:'||substr(actor_id,9) OR actor_id NOT IN (SELECT id FROM actors) OR json_extract(json,'$.id') IS NOT id OR json_extract(json,'$.version') IS NOT version OR json_extract(json,'$.actorId') IS NOT actor_id LIMIT 1",
@@ -169,6 +176,14 @@ function migrateDatabase(db: DatabaseSync): void {
       `);
       if (version < 3) db.exec(`CREATE TABLE private_scopes(id TEXT PRIMARY KEY,actor_id TEXT NOT NULL UNIQUE REFERENCES actors(id) ON DELETE CASCADE,version INTEGER NOT NULL,json TEXT NOT NULL);`);
       if (version < 4) db.exec(`CREATE TABLE conversations(group_id TEXT NOT NULL,actor_id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(group_id,actor_id));`);
+      if (version < 5) db.exec(`
+        CREATE TABLE capability_requests(id TEXT PRIMARY KEY,
+          group_id TEXT NOT NULL REFERENCES groups(id) ON UPDATE CASCADE ON DELETE CASCADE,
+          creator_id TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('submitted','reviewing','delivered','declined','cancelled')),
+          version INTEGER NOT NULL CHECK(version >= 1),json TEXT NOT NULL);
+        CREATE INDEX capability_requests_group_status ON capability_requests(group_id,status);
+        CREATE INDEX capability_requests_status ON capability_requests(status);
+      `);
       db.exec(`PRAGMA user_version=${STORAGE_SCHEMA_VERSION}; PRAGMA application_id=${APPLICATION_ID};`);
       verifyDatabase(db);
       db.exec('COMMIT');
@@ -295,6 +310,10 @@ export class Store {
       if (!row || this.db.prepare('SELECT id FROM groups WHERE id=?').get(newId)) throw new StoreError('MIGRATION_CONFLICT', '群迁移来源不存在或目标已存在；未合并群。');
       const group = decode<StoredGroup>(row)!;
       this.db.prepare('UPDATE groups SET id=?,telegram_chat_id=?,json=? WHERE id=?').run(newId, requireId(newChatId, true), JSON.stringify({ ...group, id: newId }), oldId);
+      for (const row of this.db.prepare('SELECT id,json FROM capability_requests WHERE group_id=?').all(newId) as Row[]) {
+        const request = decode<CapabilityRequest>(row)!;
+        this.db.prepare('UPDATE capability_requests SET json=? WHERE id=?').run(JSON.stringify({ ...request, groupId: newId }), row.id as string);
+      }
       for (const row of this.db.prepare('SELECT id,json FROM proposals WHERE group_id=?').all(oldId) as Row[]) {
         const proposal = decode<Proposal>(row)!;
         this.db.prepare('UPDATE proposals SET group_id=?,json=? WHERE id=?').run(newId, JSON.stringify({ ...proposal, groupId: newId }), row.id as string);
@@ -311,6 +330,60 @@ export class Store {
       this.db.prepare('UPDATE conversations SET group_id=? WHERE group_id=?').run(newId, oldId);
     });
     this.audit({ actorId: 'system', groupId: newId, action: 'group.migrate', outcome: 'completed' });
+  }
+  /** Trusted-host query. HTTP routes must independently authorize group or platform visibility. */
+  listCapabilityRequests(options: { groupId?: string; status?: CapabilityRequest['status']; offset?: number } = {}): { requests: CapabilityRequest[]; nextOffset: number | null } {
+    const offset = options.offset ?? 0;
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new StoreError('CAPABILITY_INPUT', '分页位置无效。');
+    if (options.status !== undefined && !['submitted', 'reviewing', 'delivered', 'declined', 'cancelled'].includes(options.status)) throw new StoreError('CAPABILITY_INPUT', '申请状态无效。');
+    const clauses: string[] = []; const values: (string | number)[] = [];
+    if (options.groupId !== undefined) { clauses.push('group_id=?'); values.push(options.groupId); }
+    if (options.status !== undefined) { clauses.push('status=?'); values.push(options.status); }
+    const rows = this.db.prepare(`SELECT json FROM capability_requests${clauses.length ? ' WHERE ' + clauses.join(' AND ') : ''} ORDER BY rowid DESC LIMIT 51 OFFSET ?`).all(...values, offset) as Row[];
+    return { requests: rows.slice(0, 50).map(row => decode<CapabilityRequest>(row)!), nextOffset: rows.length > 50 ? offset + 50 : null };
+  }
+  createCapabilityRequest(input: { groupId: string; creatorId: string; title: string; details: string }): CapabilityRequest {
+    const group = this.group(input.groupId, input.creatorId);
+    if (!group || group.role !== 'admin' || input.groupId.startsWith('tg-dm:')) throw new StoreError('CAPABILITY_DENIED', '需要当前群管理员权限。');
+    const title = capabilityText(input.title, 120), details = capabilityText(input.details, 2000);
+    return this.transaction(() => {
+      const duplicate = decode<CapabilityRequest>(this.db.prepare("SELECT json FROM capability_requests WHERE group_id=? AND status IN ('submitted','reviewing') AND json_extract(json,'$.title')=? AND json_extract(json,'$.details')=? LIMIT 1").get(group.id, title, details) as Row | undefined);
+      if (duplicate) return duplicate;
+      const active = Number((this.db.prepare("SELECT count(*) AS n FROM capability_requests WHERE group_id=? AND status IN ('submitted','reviewing')").get(group.id) as Row).n);
+      const total = Number((this.db.prepare("SELECT count(*) AS n FROM capability_requests WHERE status IN ('submitted','reviewing')").get() as Row).n);
+      if (active >= 20 || total >= 2000) throw new StoreError('CAPABILITY_CAPACITY', '待处理申请已达上限（每群 20 项、平台共 2000 项），请先处理或撤回已有申请。');
+      const now = new Date().toISOString();
+      const request: CapabilityRequest = { id: randomUUID(), groupId: group.id, groupName: group.name, creatorId: input.creatorId, title, details, status: 'submitted', reply: '', version: 1, createdAt: now, updatedAt: now };
+      this.db.prepare('INSERT INTO capability_requests(id,group_id,creator_id,status,version,json) VALUES(?,?,?,?,?,?)').run(request.id, group.id, input.creatorId, request.status, 1, JSON.stringify(request));
+      this.audit({ actorId: input.creatorId, groupId: group.id, action: 'capability.create', targetId: request.id, outcome: 'requested' });
+      return request;
+    });
+  }
+  /** Platform authorization is checked by the host, never supplied by the request body. */
+  reviewCapabilityRequest(id: string, input: { baseVersion: number; status: 'reviewing' | 'delivered' | 'declined'; reply: string }): CapabilityRequest {
+    if (!['reviewing', 'delivered', 'declined'].includes(input.status)) throw new StoreError('CAPABILITY_INPUT', '平台处理状态无效。');
+    const reply = capabilityText(input.reply, 2000);
+    return this.changeCapabilityRequest(id, input.baseVersion, { status: input.status, reply });
+  }
+  cancelCapabilityRequest(groupId: string, actorId: string, id: string, baseVersion: number): CapabilityRequest {
+    if (this.role(actorId, groupId) !== 'admin' || groupId.startsWith('tg-dm:')) throw new StoreError('CAPABILITY_DENIED', '需要当前群管理员权限。');
+    return this.changeCapabilityRequest(id, baseVersion, { status: 'cancelled' }, groupId);
+  }
+  private changeCapabilityRequest(id: string, baseVersion: number, change: Pick<CapabilityRequest, 'status'> & Partial<Pick<CapabilityRequest, 'reply'>>, groupId?: string): CapabilityRequest {
+    if (!Number.isSafeInteger(baseVersion) || baseVersion < 1) throw new StoreError('CAPABILITY_INPUT', '申请版本无效。');
+    return this.transaction(() => {
+      const current = decode<CapabilityRequest>(this.db.prepare('SELECT json FROM capability_requests WHERE id=?').get(id) as Row | undefined);
+      if (!current || (groupId !== undefined && current.groupId !== groupId)) throw new StoreError('CAPABILITY_NOT_FOUND', '找不到可访问的申请。');
+      if (current.version !== baseVersion || !['submitted', 'reviewing'].includes(current.status)) throw new StoreError('CAPABILITY_CONFLICT', '申请已变化或已结案，请刷新后再操作。');
+      const next: CapabilityRequest = { ...current, ...change, version: current.version + 1, updatedAt: new Date().toISOString() };
+      const result = this.db.prepare('UPDATE capability_requests SET status=?,version=?,json=? WHERE id=? AND version=?').run(next.status, next.version, JSON.stringify(next), id, baseVersion);
+      if (!result.changes) throw new StoreError('CAPABILITY_CONFLICT', '申请已变化，请刷新后再操作。');
+      this.pruneCapabilityRequests(current.groupId);
+      return next;
+    });
+  }
+  private pruneCapabilityRequests(groupId: string): void {
+    this.db.prepare("DELETE FROM capability_requests WHERE group_id=? AND status NOT IN ('submitted','reviewing') AND id NOT IN (SELECT id FROM capability_requests WHERE group_id=? AND status NOT IN ('submitted','reviewing') ORDER BY json_extract(json,'$.updatedAt') DESC,rowid DESC LIMIT 50)").run(groupId, groupId);
   }
   plugins(): Plugin[] { return (this.db.prepare('SELECT json FROM plugins ORDER BY rowid').all() as Row[]).map(row => decode<Plugin>(row)!); }
   plugin(id: string): Plugin | undefined { return decode<Plugin>(this.db.prepare('SELECT json FROM plugins WHERE id=?').get(id) as Row | undefined); }
@@ -497,6 +570,7 @@ export class Store {
       let taskBodiesRemoved = 0, proposalsRemoved = 0;
       for (const row of this.db.prepare('SELECT id FROM groups UNION ALL SELECT id FROM private_scopes').all() as Row[]) {
         const groupId = row.id as string;
+        this.pruneCapabilityRequests(groupId);
         const tasks = this.db.prepare('SELECT id,request_key FROM tasks WHERE group_id=? AND expired=0 AND result_json IS NOT NULL ORDER BY rowid DESC LIMIT -1 OFFSET ?').all(groupId, this.retention.tasksPerGroup) as Row[];
         for (const task of tasks) {
           if (task.request_key !== null) this.db.prepare("UPDATE tasks SET expired=1,draft_json='{}',result_json=NULL WHERE id=?").run(task.id as string);

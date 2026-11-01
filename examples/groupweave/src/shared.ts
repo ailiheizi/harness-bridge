@@ -53,3 +53,11 @@ export interface Me {
 export interface Overview {
   groups: Group[]; plugins: Plugin[]; tasks: Task[];
 }
+
+/** An explicitly submitted group need; status never installs or authorizes a plugin. */
+export interface CapabilityRequest {
+  id: string; groupId: string; groupName: string; creatorId: string;
+  title: string; details: string;
+  status: 'submitted' | 'reviewing' | 'delivered' | 'declined' | 'cancelled';
+  reply: string; version: number; createdAt: string; updatedAt: string;
+}

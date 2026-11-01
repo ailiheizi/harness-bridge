@@ -1,3 +1,4 @@
+import { STORAGE_SCHEMA_VERSION } from '../src/server/store.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -37,7 +38,7 @@ test('backup maintenance is platform only and server chooses bounded destination
     assert.equal((await platform.post('/api/platform/maintenance/backup', { path: '/tmp/escape.sqlite' })).statusCode, 400);
     const res = await platform.post('/api/platform/maintenance/backup', {}); assert.equal(res.statusCode, 200, res.body);
     assert.deepEqual(Object.keys(res.json()).sort(), ['integrity','name','schemaVersion','sha256']);
-    assert.equal(res.json().integrity, 'ok'); assert.equal(res.json().schemaVersion, 3);
+    assert.equal(res.json().integrity, 'ok'); assert.equal(res.json().schemaVersion, STORAGE_SCHEMA_VERSION);
     assert.match(res.json().sha256, /^[a-f0-9]{64}$/); assert.ok(!res.body.includes(dir));
     assert.equal((await platform.post('/api/platform/maintenance/prune', {})).statusCode, 200);
   }); } finally { rmSync(dir, { recursive: true, force: true }); }

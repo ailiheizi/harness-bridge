@@ -43,6 +43,7 @@ for commands, dependencies, defaults, and evidence scope.
 | Public video parsing | `/parse <url>` | Optional, manual, anonymous public content only. Best-effort; no cookies, login, proxy bypass, or guarantee that a site remains supported. |
 | Local keyword review | `/keywords <text>` or Web | Built into the native host. Platform and group must enable it; per-group editable rules, five visible defaults, zero model calls. No trained classifier or moderation actions. [Guide](docs/KEYWORD-REVIEW.md). |
 | AI ad review | `/scan <text>` | Uses the existing assistant/DSH route with explicit confirmation and actual model usage. No chat history or tools, advice only. [Guide](docs/AI-AD-REVIEW.md). |
+| Group capability requests | Web: 能力申请 / 群需求 | Group administrators submit and track needs; platform maintainers reply and record delivery. No automatic plugin installation or grants. See [usage](docs/CAPABILITY-REQUESTS.md). |
 | Daily RSS digest preset | `/rssdigest 每天09:00`, then confirmation | Bounded source/model/group plan reuses native RSS and schedule. See [current validation status](docs/RSS-DIGEST.md); it is not arbitrary workflow orchestration. |
 
 ## Current limits

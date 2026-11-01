@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { Store, StoreError } from '../src/server/store.js';
+import { Store, StoreError, STORAGE_SCHEMA_VERSION } from '../src/server/store.js';
 import { runMaintenance } from '../src/server/maintenance.js';
 
 function code(expected: string) { return (error: unknown) => error instanceof StoreError && error.code === expected; }
@@ -30,7 +30,7 @@ test('fixed maintenance options require explicit point-in-time restore and retur
     assert.equal(failed.status, 1); const failure = JSON.parse(failed.stderr); assert.equal(failure.code, 'RESTORE_ACK_REQUIRED');
     assert.doesNotMatch(failed.stdout + failed.stderr, /synthetic-private-rules|\/tmp\/|groupweave-maintenance-/);
     const cli = spawnSync(process.execPath, ['--import', 'tsx', 'src/server/maintenance.ts', 'backup', '--data-dir', restoredDir, '--output-name', 'cli.sqlite'], { encoding: 'utf8', timeout: 10_000 });
-    assert.equal(cli.status, 0, cli.stderr); const result = JSON.parse(cli.stdout); assert.equal(result.ok, true); assert.equal(result.integrity, 'ok'); assert.equal(result.schemaVersion, 3); assert.equal('path' in result, false);
+    assert.equal(cli.status, 0, cli.stderr); const result = JSON.parse(cli.stdout); assert.equal(result.ok, true); assert.equal(result.integrity, 'ok'); assert.equal(result.schemaVersion, STORAGE_SCHEMA_VERSION); assert.equal('path' in result, false);
     assert.ok(readdirSync(restoredDir).every(name => !name.startsWith('.restore-')));
   } finally { store?.close(); rmSync(root, { recursive: true, force: true }); }
 });
